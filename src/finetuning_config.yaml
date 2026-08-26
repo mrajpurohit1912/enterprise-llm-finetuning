@@ -1,0 +1,53 @@
+experiment:
+  name: qwen2.5-0.5b-officeqa-v1
+  project: "enterprise-llm-finetuning"                                                                                                                
+  seed: 42                                                                                                                                            
+  tags: ["qwen2.5", "officeqa", "lora", "sft"]                                                                                                        
+                                                         
+
+dataset:
+  source: "huggingface" # Options: huggingface | local | s3 | kaggle | lakehouse   
+  dataset_name: "databricks/officeqa"
+  train_split: "train"
+  eval_split: "test"
+
+
+
+llm_model:
+  llm_model_id: "Qwen/Qwen2.5-0.5B-Instruct"
+
+
+quantization:
+  load_in_4bit: true
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_use_double_quant: true 
+
+
+hardware:
+  distributed_strategy: "single_gpu" # Options: single_gpu | fsdp | deepspeed_stage_2 | deepspeed_stage_3          
+  fsdp_config:
+    sharding_strategy: "full_shard"
+    offload_params: false
+  deepspeed_config_path: null
+
+monitoring:                                                                                                                                           
+  logging_steps: 10                                                                                                                                   
+  eval_steps: 50                                                                                                                                      
+  save_steps: 100                                                                                                                                     
+  save_total_limit: 3                                                                                                                                 
+  telemetry:
+    enable_wandb: true
+    wandb_project: "my-org"
+    tensorboard: true
+    mlflow: false
+
+registry:
+  registry_type: "hf_hub"
+  model_name: "Qwen-OfficeQA-LoRA"
+  auto_register: true
+
+artifact:
+  output_dir: "./outputs/qwen2.5-0.5b-officeqa-v1"
+  save_merged_model: true
+  export_format: "safetensors"

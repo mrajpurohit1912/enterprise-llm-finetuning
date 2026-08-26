@@ -1,0 +1,118 @@
+# ==============================================================================
+# Enterprise Git Ignore Configuration
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Security, Credentials & Environment Variables (CRITICAL)
+# ------------------------------------------------------------------------------
+.env
+.env.*
+.env.local
+.env.development
+.env.test
+.env.production
+!.env.example
+*.pem
+*.key
+*.token
+*.secret
+*.p12
+*.crt
+id_rsa
+id_ed25519
+
+# ------------------------------------------------------------------------------
+# 2. Python Bytecode & Runtime Caches
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+nosetests.xml
+coverage.xml
+
+# ------------------------------------------------------------------------------
+# 3. Virtual Environments & Package Managers
+# ------------------------------------------------------------------------------
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.uv/
+
+# ------------------------------------------------------------------------------
+# 4. Build, Distribution & Package Metadata
+# ------------------------------------------------------------------------------
+build/
+dist/
+wheels/
+*.egg-info/
+*.egg
+MANIFEST
+
+# ------------------------------------------------------------------------------
+# 5. ML Models, Checkpoints & Training Outputs
+# ------------------------------------------------------------------------------
+output/
+outputs/
+checkpoints/
+*.safetensors
+*.pt
+*.pth
+*.bin
+*.onnx
+*.tflite
+*.ckpt
+runs/
+wandb/
+.huggingface/
+.cache/
+
+# ------------------------------------------------------------------------------
+# 6. Raw Data, Corpora & Data Caches
+# ------------------------------------------------------------------------------
+data/
+datasets/
+*.csv
+*.tsv
+*.parquet
+*.arrow
+*.jsonl
+
+# ------------------------------------------------------------------------------
+# 7. Scratchpads, Experimental Scripts & Notebooks
+# ------------------------------------------------------------------------------
+basics/
+data_loader/
+learnings/
+notes/
+notebooks/
+.ipynb_checkpoints
+plan.md
+todo.md
+
+# ------------------------------------------------------------------------------
+# 8. IDE, OS & Editor Artifacts
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

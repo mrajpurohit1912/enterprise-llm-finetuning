@@ -1,0 +1,21 @@
+[project]
+name = "finetuning-basics"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "accelerate>=1.14.0",
+    "bitsandbytes>=0.49.2",
+    "datasets>=5.0.0",
+    "dotenv>=0.9.9",
+    "peft>=0.19.1",
+    "torch>=2.13.0",
+    "transformers>=5.14.1",
+    "trl>=1.8.0",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.3.0",
+]
