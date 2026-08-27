@@ -1,7 +1,14 @@
-from pydantic import BaseModel,Field
-from typing import Literal
+"""
+src/domain/schemas/config_schema.py
+Strongly typed configuration models for enterprise LLM fine-tuning.
+Validated using Pydantic v2.
+"""
+
 from enum import Enum
 from pathlib import Path
+from typing import List, Literal, Optional
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class DatasetSourceType(str, Enum):
     HUGGINGFACE = "huggingface"
@@ -10,65 +17,114 @@ class DatasetSourceType(str, Enum):
     KAGGLE = "kaggle"
     LAKEHOUSE = "lakehouse"
 
+
+class ExperimentInfo(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    name: str = Field(..., description="Unique identifier for the fine-tuning experiment run")
+    project: str = Field(default="enterprise-llm-finetuning", description="Project namespace")
+    seed: int = Field(default=42, description="Random seed for deterministic reproducibility")
+    tags: List[str] = Field(default_factory=lambda: ["lora", "sft"])
+
+
 class DatasetConfig(BaseModel):
-    source:DatasetSourceType
-    dataset_name:str
-    train_split:Literal["train","test"] = "train"
-    eval_split:Literal["train","test"] = "test"
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    source: DatasetSourceType = Field(default=DatasetSourceType.HUGGINGFACE)
+    dataset_name: str = Field(..., description="Hugging Face hub path, S3 URI, or local file path")
+    train_split: str = Field(default="train", description="Split name for training data")
+    eval_split: Optional[str] = Field(default="test", description="Split name for evaluation data")
 
 
 class LLMModelConfig(BaseModel):
-    llm_model_id:str = "Qwen/Qwen2.5-0.5B-Instruct"
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    llm_model_id: str = Field(..., description="Foundation model ID (e.g. Qwen/Qwen2.5-0.5B-Instruct)")
+    trust_remote_code: bool = Field(default=False)
+
 
 class QuantizationConfig(BaseModel):
-    load_in_4bit:bool = True
-    bnb_4bit_quant_type:str = "nf4"
-    bnb_4bit_compute_dtype:str = "bfloat16"
-    bnb_4bit_use_double_quant:bool = True
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    load_in_4bit: bool = Field(default=True)
+    bnb_4bit_quant_type: Literal["nf4", "fp4"] = Field(default="nf4")
+    bnb_4bit_compute_dtype: Literal["bfloat16", "float16", "float32"] = Field(default="bfloat16")
+    bnb_4bit_use_double_quant: bool = Field(default=True)
+
+
+class PEFTConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    task_type: str = Field(default="CAUSAL_LM", description="Target model task type")
+    r: int = Field(default=16, ge=1, le=256, description="LoRA attention dimension rank")
+    lora_alpha: int = Field(default=32, ge=1, description="LoRA scaling alpha factor")
+    lora_dropout: float = Field(default=0.05, ge=0.0, le=0.5, description="LoRA dropout rate")
+    bias: Literal["none", "all", "lora_only"] = Field(default="none")
+    target_modules: List[str] = Field(
+        default_factory=lambda: [
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ]
+    )
+
 
 class FsdpConfig(BaseModel):
-    sharding_strategy:Literal["full_shard", "shard_grad_op", "no_shard"] = "full_shard"
-    offload_params:bool = False
-    
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    sharding_strategy: Literal["full_shard", "shard_grad_op", "no_shard"] = Field(default="full_shard")
+    offload_params: bool = Field(default=False)
+
 
 class HardwareConfig(BaseModel):
-    distributed_strategy:Literal["single_gpu", "fsdp", "deepspeed_stage_2", "deepspeed_stage_3"] = "single_gpu"
-    fsdp_config:FsdpConfig =  Field(default_factory=FsdpConfig)
-    deepspeed_config_path:Path | None = None
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    distributed_strategy: Literal[
+        "single_gpu", "fsdp", "deepspeed_stage_2", "deepspeed_stage_3"
+    ] = Field(default="single_gpu")
+    fsdp_config: FsdpConfig = Field(default_factory=FsdpConfig)
+    deepspeed_config_path: Optional[Path] = None
 
 
 class TelemetryConfig(BaseModel):
-    enable_wandb:bool = True
-    wandb_project:str = "my-org"          
-    tensorboard:bool = True
-    mlflow:bool = False
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    enable_wandb: bool = Field(default=True)
+    wandb_project: str = Field(default="enterprise-llm-finetuning")
+    enable_prometheus: bool = Field(default=True)
+    prometheus_port: int = Field(default=8000, ge=1024, le=65535)
+    enable_tensorboard: bool = Field(default=True)
+    mlflow: bool = Field(default=False)
+
 
 class MonitoringConfig(BaseModel):
-    logging_steps:int = 10
-    eval_steps:int = 50
-    save_steps:int = 50
-    save_total_limit:int = 3
-    telemetry:TelemetryConfig = Field(default_factory=TelemetryConfig)
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    logging_steps: int = Field(default=10, ge=1)
+    eval_steps: int = Field(default=50, ge=1)
+    save_steps: int = Field(default=100, ge=1)
+    save_total_limit: int = Field(default=3, ge=1)
+    telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
+
 
 class RegistryConfig(BaseModel):
-    registry_type:Literal["hf_hub","s3","local","mlflow"] = "hf_hub"
-    model_name:str = "my-llm-finetuned-model"
-    auto_register:bool = True
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    registry_type: Literal["hf_hub", "s3", "local", "mlflow"] = Field(default="hf_hub")
+    model_name: str = Field(default="my-finetuned-model")
+    auto_register: bool = Field(default=True)
+
 
 class ArtifactConfig(BaseModel):
-    output_dir:Path = Path.cwd() / "output" / "lora_finetuning_output"
-    save_merged_model:bool = True
-    export_format:Literal["pytorch","safetensors"] = "safetensors"
-    
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    output_dir: Path = Field(default=Path("./outputs/run-v1"))
+    save_merged_model: bool = Field(default=True)
+    export_format: Literal["safetensors", "pytorch"] = Field(default="safetensors")
+
 
 class ExperimentConfig(BaseModel):
-    experiment_name:str = "qwen2.5-0.5b-officeqa-v1"
-    seed:int = 42
-    tags: list[str] = ["qwen2.5", "officeqa", "lora", "sft"]  
-    dataset:DatasetConfig = Field(default_factory=DatasetConfig)
-    llm_model:LLMModelConfig = Field(default_factory=LLMModelConfig)
-    quantization:QuantizationConfig = Field(default_factory=QuantizationConfig)
-    hardware:HardwareConfig = Field(default_factory=HardwareConfig)
-    monitoring:MonitoringConfig = Field(default_factory=MonitoringConfig)
-    registry:RegistryConfig = Field(default_factory=RegistryConfig)
-    artifact:ArtifactConfig = Field(default_factory=ArtifactConfig)
+    """Aggregate Root Configuration validating end-to-end experiment spec."""
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    experiment: ExperimentInfo
+    dataset: DatasetConfig
+    llm_model: LLMModelConfig
+    quantization: QuantizationConfig = Field(default_factory=QuantizationConfig)
+    peft: PEFTConfig = Field(default_factory=PEFTConfig)
+    hardware: HardwareConfig = Field(default_factory=HardwareConfig)
+    monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
+    registry: RegistryConfig = Field(default_factory=RegistryConfig)
+    artifact: ArtifactConfig = Field(default_factory=ArtifactConfig)
