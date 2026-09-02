@@ -33,10 +33,7 @@ def main() -> None:
     args = parse_args()
     config_path = Path(args.config)
 
-    print("=" * 70)
-    print("🚀 Enterprise LLM Fine-Tuning Pipeline")
-    print(f"📄 Configuration: {config_path.resolve()}")
-    print("=" * 70)
+
 
     try:
         config_loader = YamlConfigLoader(config_path=config_path)
@@ -51,26 +48,13 @@ def main() -> None:
 
         dataset = pipeline.run()
 
-        print("\n" + "=" * 70)
-        print("✅ Data Ingestion & Preprocessing Completed Successfully!")
-        print("=" * 70)
-        print(f"📊 Dataset Structure: {dataset}")
 
-        # Show sample output if available
-        if hasattr(dataset, "keys"):
-            for split in dataset.keys():
-                count = len(dataset[split])
-                print(f"   • Split '{split}': {count:,} samples")
-                if count > 0 and "text" in dataset[split].column_names:
-                    preview = dataset[split][0]["text"]
-                    truncated = (preview[:200] + "...") if len(preview) > 200 else preview
-                    print(f"     Preview: {truncated!r}")
-
+        print(dataset)
     except DomainError as err:
-        print(f"\n❌ [Domain Error] {err}", file=sys.stderr)
+        print(f"[Domain Error] {err}", file=sys.stderr)
         sys.exit(1)
     except Exception as exc:
-        print(f"\n💥 [Fatal Error] Unexpected failure: {exc}", file=sys.stderr)
+        print(f" [Fatal Error] Unexpected failure: {exc}", file=sys.stderr)
         sys.exit(1)
 
 
