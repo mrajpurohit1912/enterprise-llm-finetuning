@@ -1,49 +1,70 @@
+# ==============================================================================
+# Enterprise LLM Fine-Tuning Specification Configuration
+# ==============================================================================
+
 experiment:
-  name: qwen2.5-0.5b-officeqa-v1
-  project: "enterprise-llm-finetuning"                                                                                                                
-  seed: 42                                                                                                                                            
-  tags: ["qwen2.5", "officeqa", "lora", "sft"]                                                                                                        
-                                                         
+  name: "qwen2.5-0.5b-officeqa-v1"
+  project: "enterprise-llm-finetuning"
+  seed: 42
+  tags:
+    - "qwen2.5"
+    - "officeqa"
+    - "lora"
+    - "sft"
 
 dataset:
-  source: "huggingface" # Options: huggingface | local | s3 | kaggle | lakehouse   
+  source: "huggingface" # Options: huggingface | local | s3 | kaggle | lakehouse
   dataset_name: "databricks/officeqa"
   train_split: "train"
   eval_split: "test"
 
-
-
 llm_model:
   llm_model_id: "Qwen/Qwen2.5-0.5B-Instruct"
-
+  trust_remote_code: false
 
 quantization:
   load_in_4bit: true
   bnb_4bit_quant_type: "nf4"
   bnb_4bit_compute_dtype: "bfloat16"
-  bnb_4bit_use_double_quant: true 
+  bnb_4bit_use_double_quant: true
 
+peft:
+  task_type: "CAUSAL_LM"
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: "none"
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
 
 hardware:
-  distributed_strategy: "single_gpu" # Options: single_gpu | fsdp | deepspeed_stage_2 | deepspeed_stage_3          
+  distributed_strategy: "single_gpu" # Options: single_gpu | fsdp | deepspeed_stage_2 | deepspeed_stage_3
   fsdp_config:
     sharding_strategy: "full_shard"
     offload_params: false
   deepspeed_config_path: null
 
-monitoring:                                                                                                                                           
-  logging_steps: 10                                                                                                                                   
-  eval_steps: 50                                                                                                                                      
-  save_steps: 100                                                                                                                                     
-  save_total_limit: 3                                                                                                                                 
+monitoring:
+  logging_steps: 10
+  eval_steps: 50
+  save_steps: 100
+  save_total_limit: 3
   telemetry:
     enable_wandb: true
-    wandb_project: "my-org"
-    tensorboard: true
+    wandb_project: "enterprise-llm-finetuning"
+    enable_prometheus: true
+    prometheus_port: 8000
+    enable_tensorboard: true
     mlflow: false
 
 registry:
-  registry_type: "hf_hub"
+  registry_type: "hf_hub" # Options: hf_hub | s3 | local | mlflow
   model_name: "Qwen-OfficeQA-LoRA"
   auto_register: true
 
