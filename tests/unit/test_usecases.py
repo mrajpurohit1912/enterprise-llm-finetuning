@@ -38,7 +38,7 @@ class TestUseCases(unittest.TestCase):
         config = DatasetConfig(source=DatasetSourceType.HUGGINGFACE, dataset_name="databricks/officeqa")
         result = usecase.execute(config)
 
-        mock_loader.load_data.assert_called_once_with(dataset_name="databricks/officeqa")
+        mock_loader.load_data.assert_called_once_with(dataset_name="databricks/officeqa", subset_name=None)
         self.assertEqual(result, self.mock_dataset)
 
     def test_load_dataset_usecase_null_loader_raises(self) -> None:
@@ -85,22 +85,30 @@ class TestUseCases(unittest.TestCase):
         mock_tokenizer_loader = MagicMock()
         mock_tokenizer_loader.get_tokenizer.return_value = mock_tokenizer
 
+        mock_llm_loader = MagicMock()
+        mock_base_model = MagicMock()
+        mock_peft_model = MagicMock()
+        mock_llm_loader.load_model.return_value = mock_base_model
+        mock_llm_loader.apply_peft.return_value = mock_peft_model
+
         pipeline = TrainPipelineUsecase(
             config_loader=mock_config_loader,
             dataset_loader_factory=mock_factory,
             tokenizer_loader=mock_tokenizer_loader,
+            llm_model_loader=mock_llm_loader,
         )
 
         result = pipeline.run()
 
         mock_config_loader.load_config.assert_called_once()
         mock_factory.get_loader.assert_called_once_with(DatasetSourceType.HUGGINGFACE)
-        mock_data_loader.load_data.assert_called_once_with(dataset_name="test/dataset")
+        mock_data_loader.load_data.assert_called_once_with(dataset_name="test/dataset", subset_name=None)
         mock_tokenizer_loader.get_tokenizer.assert_called_once_with(
             model_name="test/model", trust_remote_code=False
         )
-        self.assertIn("train", result)
-        self.assertIn("text", result["train"].column_names)
+        mock_llm_loader.load_model.assert_called_once()
+        mock_llm_loader.apply_peft.assert_called_once()
+        self.assertEqual(result, mock_peft_model)
 
 
 if __name__ == "__main__":

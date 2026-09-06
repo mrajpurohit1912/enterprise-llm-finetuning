@@ -42,7 +42,7 @@ class TestDatasetLoader(unittest.TestCase):
         loader = HuggingFaceDatasetLoader()
         result = loader.load_data("databricks/officeqa", split="train")
 
-        mock_load.assert_called_once_with("databricks/officeqa", split="train")
+        mock_load.assert_called_once_with(path="databricks/officeqa", name=None, split="train")
         self.assertEqual(result, mock_dataset)
 
     @patch("src.infrastructure.huggingface.huggingface_dataset_loader.load_dataset")

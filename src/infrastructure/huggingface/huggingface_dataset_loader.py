@@ -13,13 +13,19 @@ from src.domain.interfaces.dataset_loader import DataLoaderBase
 class HuggingFaceDatasetLoader(DataLoaderBase):
     """Loads datasets from the Hugging Face Hub or local filesystem via the datasets library."""
 
-    def load_data(self, dataset_name: str, split: Optional[str] = None) -> Any:
+    def load_data(
+        self,
+        dataset_name: str,
+        split: Optional[str] = None,
+        subset_name: Optional[str] = None,
+    ) -> Any:
         """
         Load dataset from Hugging Face Hub or local cache.
 
         Args:
             dataset_name: Hugging Face dataset identifier or local path.
             split: Specific split to load (e.g., 'train', 'test').
+            subset_name: Optional dataset configuration or subset name.
 
         Returns:
             DatasetDict or Dataset instance.
@@ -31,9 +37,13 @@ class HuggingFaceDatasetLoader(DataLoaderBase):
             raise DatasetIngestionError("Dataset name cannot be empty or blank.")
 
         try:
-            dataset = load_dataset(dataset_name.strip(), split=split)
+            dataset = load_dataset(
+                path=dataset_name.strip(),
+                name=subset_name.strip() if subset_name else None,
+                split=split,
+            )
             return dataset
         except Exception as exc:
             raise DatasetIngestionError(
-                f"Failed to load dataset '{dataset_name}' (split: {split}): {exc}"
+                f"Failed to load dataset '{dataset_name}' (subset: {subset_name}, split: {split}): {exc}"
             ) from exc

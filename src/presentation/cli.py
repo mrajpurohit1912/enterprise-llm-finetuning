@@ -6,6 +6,7 @@ Command-line presentation interface for triggering fine-tuning pipelines.
 import argparse
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
 
 from src.application.usecases.train_pipeline import TrainPipelineUsecase
 from src.domain.exceptions import DomainError
@@ -30,6 +31,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    load_dotenv()   
     args = parse_args()
     config_path = Path(args.config)
 

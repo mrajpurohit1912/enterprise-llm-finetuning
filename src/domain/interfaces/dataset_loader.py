@@ -11,13 +11,19 @@ class DataLoaderBase(ABC):
     """Abstract port for all dataset ingestion adapters (HuggingFace, S3, Local, Lakehouse)."""
 
     @abstractmethod
-    def load_data(self, dataset_name: str, split: Optional[str] = None) -> Any:
+    def load_data(
+        self,
+        dataset_name: str,
+        split: Optional[str] = None,
+        subset_name: Optional[str] = None,
+    ) -> Any:
         """
         Fetch and load a dataset into a standard dataset structure.
 
         Args:
             dataset_name: Dataset identifier, URI, or local file path.
             split: Optional specific split to load (e.g. 'train', 'test').
+            subset_name: Optional dataset configuration or subset name.
 
         Returns:
             Loaded dataset object (e.g., DatasetDict or Dataset).
