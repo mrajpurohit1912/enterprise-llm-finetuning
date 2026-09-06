@@ -18,6 +18,7 @@ from src.domain.schemas.config_schema import (
     RegistryConfig,
     TelemetryConfig,
 )
+from src.domain.schemas.pipeline_schema import TrainPipelineResult
 
 __all__ = [
     "ArtifactConfig",
@@ -33,4 +34,5 @@ __all__ = [
     "QuantizationConfig",
     "RegistryConfig",
     "TelemetryConfig",
+    "TrainPipelineResult",
 ]

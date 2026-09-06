@@ -33,10 +33,11 @@ class TransformerLlmModelLoader(ModelLoaderBase):
             raise ModelLoadError("Model ID cannot be empty or blank.")
 
         try:
-            if quantization_config:
+            bnb_config = self._build_bnb_config(quantization_config)
+            if bnb_config is not None:
                 return AutoModelForCausalLM.from_pretrained(
                     pretrained_model_name_or_path=model_id.strip(),
-                    quantization_config=quantization_config,
+                    quantization_config=bnb_config,
                     device_map="auto",
                     **kwargs,
                 )
@@ -51,6 +52,27 @@ class TransformerLlmModelLoader(ModelLoaderBase):
             raise ModelLoadError(
                 f"Failed to load LLM model '{model_id}': {exc}"
             ) from exc
+
+    def _build_bnb_config(self, quantization_config: Optional[Any]) -> Optional[Any]:
+        """Convert domain QuantizationConfig or return existing BitsAndBytesConfig."""
+        if quantization_config is None:
+            return None
+
+        from transformers import BitsAndBytesConfig
+
+        if isinstance(quantization_config, BitsAndBytesConfig):
+            return quantization_config
+
+        if getattr(quantization_config, "load_in_4bit", False):
+            compute_dtype_str = getattr(quantization_config, "bnb_4bit_compute_dtype", "bfloat16")
+            compute_dtype = getattr(torch, compute_dtype_str, torch.bfloat16)
+            return BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type=getattr(quantization_config, "bnb_4bit_quant_type", "nf4"),
+                bnb_4bit_compute_dtype=compute_dtype,
+                bnb_4bit_use_double_quant=getattr(quantization_config, "bnb_4bit_use_double_quant", True),
+            )
+        return None
 
     def apply_peft(self, model: PreTrainedModel, peft_config: Any) -> Any:
         """

@@ -4,6 +4,7 @@ Command-line presentation interface for triggering fine-tuning pipelines.
 """
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
@@ -31,11 +32,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    load_dotenv()   
+    load_dotenv()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     args = parse_args()
     config_path = Path(args.config)
-
-
 
     try:
         config_loader = YamlConfigLoader(config_path=config_path)
@@ -48,15 +52,23 @@ def main() -> None:
             tokenizer_loader=tokenizer_loader,
         )
 
-        dataset = pipeline.run()
+        result = pipeline.run()
 
-
-        print(dataset)
+        print("\n=======================================================")
+        print("          FINE-TUNING PIPELINE RUN SUMMARY             ")
+        print("=======================================================")
+        print(f"Experiment Name   : {result.experiment_name}")
+        print(f"Execution Status  : {result.status}")
+        print(f"Elapsed Time      : {result.duration_seconds}s")
+        print(f"Artifacts Output  : {result.output_dir}")
+        if result.dataset_size:
+            print(f"Dataset Partitions: {result.dataset_size}")
+        print("=======================================================\n")
     except DomainError as err:
         print(f"[Domain Error] {err}", file=sys.stderr)
         sys.exit(1)
     except Exception as exc:
-        print(f" [Fatal Error] Unexpected failure: {exc}", file=sys.stderr)
+        print(f"[Fatal Error] Unexpected failure: {exc}", file=sys.stderr)
         sys.exit(1)
 
 

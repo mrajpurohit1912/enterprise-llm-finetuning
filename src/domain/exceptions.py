@@ -27,3 +27,8 @@ class PreprocessingError(DomainError):
 class ModelLoadError(DomainError):
     """Raised when foundation model loading or quantization fails."""
     pass
+
+
+class PipelineExecutionError(DomainError):
+    """Raised when an end-to-end training pipeline stage fails."""
+    pass
