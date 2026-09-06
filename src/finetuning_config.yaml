@@ -15,6 +15,7 @@ experiment:
 dataset:
   source: "huggingface" # Options: huggingface | local | s3 | kaggle | lakehouse
   dataset_name: "databricks/officeqa"
+  subset_name: "officeqa_pro"
   train_split: "train"
   eval_split: "test"
 

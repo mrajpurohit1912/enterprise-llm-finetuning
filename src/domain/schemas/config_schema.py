@@ -30,6 +30,7 @@ class DatasetConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     source: DatasetSourceType = Field(default=DatasetSourceType.HUGGINGFACE)
     dataset_name: str = Field(..., description="Hugging Face hub path, S3 URI, or local file path")
+    subset_name: Optional[str] = Field(default=None, description="Optional dataset configuration or subset name")
     train_split: str = Field(default="train", description="Split name for training data")
     eval_split: Optional[str] = Field(default="test", description="Split name for evaluation data")
 

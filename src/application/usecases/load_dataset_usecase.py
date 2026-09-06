@@ -33,4 +33,7 @@ class LoadDatasetUseCase:
         if not dataset_config:
             raise DatasetIngestionError("DatasetConfig is required to execute LoadDatasetUseCase.")
 
-        return self._loader.load_data(dataset_name=dataset_config.dataset_name)
+        return self._loader.load_data(
+            dataset_name=dataset_config.dataset_name,
+            subset_name=dataset_config.subset_name,
+        )
