@@ -14,10 +14,12 @@ from src.domain.schemas.config_schema import (
     LLMModelConfig,
     MonitoringConfig,
     PEFTConfig,
+    TrainingArgs,
     QuantizationConfig,
     RegistryConfig,
     TelemetryConfig,
 )
+from src.domain.schemas.pipeline_schema import TrainPipelineResult
 
 __all__ = [
     "ArtifactConfig",
@@ -33,4 +35,6 @@ __all__ = [
     "QuantizationConfig",
     "RegistryConfig",
     "TelemetryConfig",
+    "TrainingArgs",
+    "TrainPipelineResult",
 ]

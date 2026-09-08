@@ -1,27 +1,35 @@
 """
 src/application/usecases/train_pipeline.py
-Orchestration pipeline use case connecting domain configurations, data ingestion, and preprocessing.
+Orchestration pipeline use case connecting domain configurations, data ingestion, preprocessing, model preparation, and training.
 """
 
-from typing import Any, Optional
+import logging
+import time
+from typing import Any, Optional, Tuple
+
 from src.application.services.dataset_processor import DatasetProcessor
 from src.application.usecases.load_dataset_usecase import LoadDatasetUseCase
 from src.application.usecases.preprocess_dataset_usecase import PreprocessDatasetUseCase
+from src.application.usecases.train_model_usecase import TrainModelUseCase
+from src.domain.exceptions import DomainError, PipelineExecutionError
 from src.domain.interfaces.config_loader import ConfigLoaderBase
 from src.domain.interfaces.model_loader import ModelLoaderBase
 from src.domain.interfaces.tokenizer import TokenizerBase
 from src.domain.schemas.config_schema import ExperimentConfig
+from src.domain.schemas.pipeline_schema import TrainPipelineResult
 from src.infrastructure.factories.dataset_factory import DatasetLoaderFactory
 from src.infrastructure.huggingface.chat_template_formatter import ChatTemplateFormatter
 from src.infrastructure.huggingface.huggingface_tokenizer import HuggingFaceTokenizer
 from src.infrastructure.llm_model_loader.transformers_llm_model_loader import TransformerLlmModelLoader
 
+logger = logging.getLogger(__name__)
+
 
 class TrainPipelineUsecase:
     """
-    Main orchestration use case executing fine-tuning pipeline stages.
+    Enterprise orchestration use case executing fine-tuning pipeline stages.
     Coordinates configuration loading, dataset loading, chat-template formatting,
-    quantized model loading, and LoRA adapter wrapping.
+    quantized model loading, LoRA adapter wrapping, and model training.
     """
 
     def __init__(
@@ -30,82 +38,195 @@ class TrainPipelineUsecase:
         dataset_loader_factory: Optional[DatasetLoaderFactory] = None,
         tokenizer_loader: Optional[TokenizerBase] = None,
         llm_model_loader: Optional[ModelLoaderBase] = None,
+        train_model_usecase: Optional[TrainModelUseCase] = None,
     ) -> None:
         self.config_loader = config_loader
         self.dataset_loader_factory = dataset_loader_factory or DatasetLoaderFactory()
         self.tokenizer_loader = tokenizer_loader or HuggingFaceTokenizer()
         self.llm_model_loader = llm_model_loader or TransformerLlmModelLoader()
+        self.train_model_usecase = train_model_usecase
         self.config: Optional[ExperimentConfig] = None
         self.llm_base_model: Any = None
         self.peft_model: Any = None
 
-    def run(self) -> Any:
+    def run(self) -> TrainPipelineResult:
         """
-        Execute end-to-end pipeline stages.
+        Execute end-to-end pipeline stages with lifecycle telemetry and error boundaries.
 
         Returns:
-            Configured PeftModel ready for SFTTrainer.
+            TrainPipelineResult: Strongly-typed operational result DTO.
+
+        Raises:
+            PipelineExecutionError: If any pipeline stage encounters an unrecoverable failure.
         """
-        # 1. Load and Validate Configuration
-        self.config = self.config_loader.load_config()
-        print(f"[Pipeline] Loaded validated config for experiment: '{self.config.experiment.name}'")
+        pipeline_start_time = time.perf_counter()
+        logger.info("Initializing enterprise LLM fine-tuning pipeline...")
 
-        # 2. Dynamic Data Ingestion via Factory
-        dataset_loader = self.dataset_loader_factory.get_loader(self.config.dataset.source)
+        try:
+            # 1. Load and Validate Configuration
+            self.config = self.config_loader.load_config()
+            logger.info("Loaded validated experiment configuration: '%s'", self.config.experiment.name)
+
+            # 2. Ingest and Preprocess Data
+            processed_dataset, tokenizer = self._prepare_data(self.config)
+
+            # 3. Load Quantized Foundation Model and Attach LoRA Adapters
+            model = self._prepare_model(self.config)
+
+            # 4. Execute Model Training Stage (if TrainModelUseCase is configured)
+            train_output = None
+            if self.train_model_usecase is not None:
+                train_output = self._execute_training(
+                    config=self.config,
+                    model=model,
+                    train_dataset=processed_dataset,
+                    tokenizer=tokenizer,
+                )
+
+            elapsed_seconds = time.perf_counter() - pipeline_start_time
+            logger.info(
+                "Fine-tuning pipeline completed successfully in %.2f seconds.",
+                elapsed_seconds,
+            )
+
+            dataset_sizes = {}
+            if hasattr(processed_dataset, "keys"):
+                dataset_sizes = {split: len(processed_dataset[split]) for split in processed_dataset.keys()}
+            elif hasattr(processed_dataset, "__len__"):
+                dataset_sizes = {"train": len(processed_dataset)}
+
+            # Extract metrics from training output if available
+            train_loss = None
+            metrics = None
+            if train_output is not None:
+                train_loss = getattr(train_output, "training_loss", None)
+                metrics = getattr(train_output, "metrics", None)
+                if isinstance(train_output, dict):
+                    train_loss = train_output.get("training_loss", train_output.get("train_loss"))
+                    metrics = train_output
+
+            return TrainPipelineResult(
+                experiment_name=self.config.experiment.name,
+                status="SUCCESS",
+                output_dir=str(self.config.artifact.output_dir),
+                duration_seconds=round(elapsed_seconds, 2),
+                train_loss=train_loss,
+                metrics=metrics,
+                dataset_size=dataset_sizes,
+                model=model,
+                tokenizer=tokenizer,
+            )
+
+        except DomainError:
+            # Re-raise domain errors untouched to maintain layer integrity
+            raise
+        except Exception as exc:
+            elapsed_seconds = time.perf_counter() - pipeline_start_time
+            logger.error(
+                "Pipeline execution failed after %.2f seconds: %s",
+                elapsed_seconds,
+                str(exc),
+                exc_info=True,
+            )
+            raise PipelineExecutionError(f"Pipeline execution failed: {exc}") from exc
+
+    def _prepare_data(self, config: ExperimentConfig) -> Tuple[Any, Any]:
+        """
+        Execute dataset loading and chat-template formatting.
+
+        Args:
+            config: Validated experiment configuration.
+
+        Returns:
+            Tuple[Any, Any]: (processed_dataset, tokenizer)
+        """
+        logger.info("Ingesting dataset from source '%s': '%s'...", config.dataset.source, config.dataset.dataset_name)
+        dataset_loader = self.dataset_loader_factory.get_loader(config.dataset.source)
         load_usecase = LoadDatasetUseCase(loader=dataset_loader)
-        raw_dataset = load_usecase.execute(dataset_config=self.config.dataset)
-        print(f"[Pipeline] Successfully loaded dataset: '{self.config.dataset.dataset_name}'")
+        raw_dataset = load_usecase.execute(dataset_config=config.dataset)
 
-        # 3. Initialize Model Tokenizer
+        logger.info("Initializing tokenizer for model: '%s'...", config.llm_model.llm_model_id)
         tokenizer = self.tokenizer_loader.get_tokenizer(
-            model_name=self.config.llm_model.llm_model_id,
-            trust_remote_code=self.config.llm_model.trust_remote_code,
+            model_name=config.llm_model.llm_model_id,
+            trust_remote_code=config.llm_model.trust_remote_code,
         )
-        print(f"[Pipeline] Initialized tokenizer for model: '{self.config.llm_model.llm_model_id}'")
 
-        # 4. Initialize Preprocessing Strategy & Application Service
+        logger.info("Applying chat template formatting to dataset...")
         formatter = ChatTemplateFormatter(tokenizer=tokenizer)
         processor = DatasetProcessor(formatter=formatter)
         preprocess_usecase = PreprocessDatasetUseCase(processor=processor)
-
-        # 5. Execute Preprocessing Transformation
         processed_dataset = preprocess_usecase.execute(raw_dataset)
-        print(f"[Pipeline] Successfully preprocessed and formatted dataset into ChatML standard.")
 
-        # 6. Build Quantization Config & Load Foundation LLM Model
-        model_id = self.config.llm_model.llm_model_id
-        quant_config = None
-        if self.config.quantization and self.config.quantization.load_in_4bit:
-            import torch
-            from transformers import BitsAndBytesConfig
+        return processed_dataset, tokenizer
 
-            compute_dtype = getattr(torch, self.config.quantization.bnb_4bit_compute_dtype, torch.bfloat16)
-            quant_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type=self.config.quantization.bnb_4bit_quant_type,
-                bnb_4bit_compute_dtype=compute_dtype,
-                bnb_4bit_use_double_quant=self.config.quantization.bnb_4bit_use_double_quant,
-            )
+    def _prepare_model(self, config: ExperimentConfig) -> Any:
+        """
+        Execute foundation model loading, precision quantization, and PEFT adapter wrapping.
 
-        print(f"[Pipeline] Loading LLM model: '{model_id}' (4-bit: {quant_config is not None})...")
+        Args:
+            config: Validated experiment configuration.
+
+        Returns:
+            Any: Configured PEFT / base model ready for training.
+        """
+        model_id = config.llm_model.llm_model_id
+        is_4bit = bool(config.quantization and config.quantization.load_in_4bit)
+
+        logger.info("Loading foundation model '%s' (4-bit: %s)...", model_id, is_4bit)
         self.llm_base_model = self.llm_model_loader.load_model(
             model_id=model_id,
-            quantization_config=quant_config,
-            trust_remote_code=self.config.llm_model.trust_remote_code,
+            quantization_config=config.quantization,
+            trust_remote_code=config.llm_model.trust_remote_code,
         )
-        print(f"[Pipeline] Successfully loaded base model: {type(self.llm_base_model).__name__}")
 
-        # 7. Apply PEFT / LoRA Adapters
-        if self.config.peft:
-            print(f"[Pipeline] Attaching LoRA adapters (r={self.config.peft.r}, alpha={self.config.peft.lora_alpha})...")
+        if config.peft:
+            logger.info("Attaching LoRA adapters (r=%d, alpha=%d)...", config.peft.r, config.peft.lora_alpha)
             self.peft_model = self.llm_model_loader.apply_peft(
                 model=self.llm_base_model,
-                peft_config=self.config.peft,
+                peft_config=config.peft,
             )
-            print("[Pipeline] Successfully configured PEFT model.")
-        else:
-            self.peft_model = self.llm_base_model
+            return self.peft_model
 
+        self.peft_model = self.llm_base_model
         return self.peft_model
 
+    def _execute_training(
+        self,
+        config: ExperimentConfig,
+        model: Any,
+        train_dataset: Any,
+        tokenizer: Any,
+    ) -> Any:
+        """
+        Execute model training using the injected TrainModelUseCase.
 
+        Args:
+            config: Validated experiment configuration.
+            model: Foundation or adapted PEFT model.
+            train_dataset: Formatted training dataset (Dataset or DatasetDict).
+            tokenizer: Model tokenizer.
+
+        Returns:
+            Any: Framework training output metrics.
+        """
+        output_dir = str(config.artifact.output_dir)
+
+        # Unpack split partitions if dataset is a DatasetDict
+        train_split = train_dataset
+        eval_split = None
+        if hasattr(train_dataset, "keys") and hasattr(train_dataset, "__getitem__"):
+            train_split = train_dataset.get("train", next(iter(train_dataset.values())))
+            eval_split = train_dataset.get("test") or train_dataset.get("validation") or train_dataset.get("eval")
+            logger.info("Extracted 'train' partition (%d examples) for training.", len(train_split))
+            if eval_split is not None:
+                logger.info("Extracted evaluation partition (%d examples) for evaluation.", len(eval_split))
+
+        logger.info("Executing training stage via TrainModelUseCase (output_dir='%s')...", output_dir)
+        return self.train_model_usecase.execute(
+            model=model,
+            train_dataset=train_split,
+            eval_dataset=eval_split,
+            training_args=config.training_args,
+            tokenizer=tokenizer,
+            output_dir=output_dir,
+        )
