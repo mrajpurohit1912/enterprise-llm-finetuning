@@ -5,6 +5,7 @@ Command-line presentation interface for triggering fine-tuning pipelines.
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
@@ -16,6 +17,7 @@ from src.infrastructure.config.yaml_loader import YamlConfigLoader
 from src.infrastructure.factories.dataset_factory import DatasetLoaderFactory
 from src.infrastructure.factories.trainer_factory import TrainerFactory
 from src.infrastructure.huggingface.huggingface_tokenizer import HuggingFaceTokenizer
+from src.infrastructure.logging import setup_logging
 from src.infrastructure.monitoring.callback_factory import MonitoringCallbackFactory
 
 
@@ -31,17 +33,27 @@ def parse_args() -> argparse.Namespace:
         default="src/finetuning_config.yaml",
         help="Path to YAML fine-tuning experiment specification",
     )
+    parser.add_argument(
+        "--env",
+        type=str,
+        choices=["development", "production"],
+        default=os.getenv("ENVIRONMENT", "development"),
+        help="Environment execution mode ('development' for colors, 'production' for JSON)",
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default=os.getenv("LOG_LEVEL", "INFO"),
+        help="Logging verbosity level",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     load_dotenv()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
     args = parse_args()
+    setup_logging(env=args.env, log_level=args.log_level)
     config_path = Path(args.config)
 
     try:

@@ -21,6 +21,7 @@ from src.infrastructure.factories.dataset_factory import DatasetLoaderFactory
 from src.infrastructure.huggingface.chat_template_formatter import ChatTemplateFormatter
 from src.infrastructure.huggingface.huggingface_tokenizer import HuggingFaceTokenizer
 from src.infrastructure.llm_model_loader.transformers_llm_model_loader import TransformerLlmModelLoader
+from src.infrastructure.logging import clear_logging_context, set_logging_context
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,11 @@ class TrainPipelineUsecase:
         try:
             # 1. Load and Validate Configuration
             self.config = self.config_loader.load_config()
+            set_logging_context(
+                experiment_name=self.config.experiment.name,
+                model_id=self.config.llm_model.llm_model_id,
+                dataset_name=self.config.dataset.dataset_name,
+            )
             logger.info("Loaded validated experiment configuration: '%s'", self.config.experiment.name)
 
             # 2. Ingest and Preprocess Data
@@ -131,6 +137,8 @@ class TrainPipelineUsecase:
                 exc_info=True,
             )
             raise PipelineExecutionError(f"Pipeline execution failed: {exc}") from exc
+        finally:
+            clear_logging_context()
 
     def _prepare_data(self, config: ExperimentConfig) -> Tuple[Any, Any]:
         """
