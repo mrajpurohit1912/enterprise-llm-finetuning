@@ -16,6 +16,7 @@ from src.infrastructure.config.yaml_loader import YamlConfigLoader
 from src.infrastructure.factories.dataset_factory import DatasetLoaderFactory
 from src.infrastructure.factories.trainer_factory import TrainerFactory
 from src.infrastructure.huggingface.huggingface_tokenizer import HuggingFaceTokenizer
+from src.infrastructure.monitoring.callback_factory import MonitoringCallbackFactory
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,6 +51,13 @@ def main() -> None:
         dataset_factory = DatasetLoaderFactory()
         tokenizer_loader = HuggingFaceTokenizer()
 
+        # Composition Root: Resolve monitoring callbacks (Prometheus, W&B)
+        callbacks = MonitoringCallbackFactory.create_callbacks(
+            monitoring_config=config.monitoring,
+            experiment_name=config.experiment.name,
+            hyperparameters=config.training_args.model_dump(),
+        )
+
         # Composition Root: Resolve trainer adapter and inject into atomic use case
         trainer = TrainerFactory.get_trainer(config.training_args.trainer_type)
         train_model_usecase = TrainModelUseCase(trainer=trainer)
@@ -59,6 +67,7 @@ def main() -> None:
             dataset_loader_factory=dataset_factory,
             tokenizer_loader=tokenizer_loader,
             train_model_usecase=train_model_usecase,
+            callbacks=callbacks,
         )
 
         result = pipeline.run()
