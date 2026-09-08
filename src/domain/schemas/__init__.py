@@ -14,6 +14,7 @@ from src.domain.schemas.config_schema import (
     LLMModelConfig,
     MonitoringConfig,
     PEFTConfig,
+    TrainingArgs,
     QuantizationConfig,
     RegistryConfig,
     TelemetryConfig,
@@ -34,5 +35,6 @@ __all__ = [
     "QuantizationConfig",
     "RegistryConfig",
     "TelemetryConfig",
+    "TrainingArgs",
     "TrainPipelineResult",
 ]

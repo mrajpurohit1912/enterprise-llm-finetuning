@@ -92,11 +92,18 @@ class TestUseCases(unittest.TestCase):
         mock_llm_loader.load_model.return_value = mock_base_model
         mock_llm_loader.apply_peft.return_value = mock_peft_model
 
+        mock_train_usecase = MagicMock()
+        mock_train_output = MagicMock()
+        mock_train_output.training_loss = 0.35
+        mock_train_output.metrics = {"train_loss": 0.35, "train_runtime": 5.2}
+        mock_train_usecase.execute.return_value = mock_train_output
+
         pipeline = TrainPipelineUsecase(
             config_loader=mock_config_loader,
             dataset_loader_factory=mock_factory,
             tokenizer_loader=mock_tokenizer_loader,
             llm_model_loader=mock_llm_loader,
+            train_model_usecase=mock_train_usecase,
         )
 
         result = pipeline.run()
@@ -116,10 +123,12 @@ class TestUseCases(unittest.TestCase):
             model=mock_base_model,
             peft_config=real_config.peft,
         )
+        mock_train_usecase.execute.assert_called_once()
         self.assertIsInstance(result, TrainPipelineResult)
         self.assertEqual(result.status, "SUCCESS")
         self.assertEqual(result.experiment_name, "test-pipeline")
         self.assertEqual(result.model, mock_peft_model)
+        self.assertEqual(result.train_loss, 0.35)
         self.assertGreaterEqual(result.duration_seconds, 0.0)
 
     def test_train_pipeline_usecase_failure_raises_pipeline_execution_error(self) -> None:

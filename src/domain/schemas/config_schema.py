@@ -67,7 +67,22 @@ class PEFTConfig(BaseModel):
             "down_proj",
         ]
     )
-
+class TrainingArgs(BaseModel):                                                                                                                                                
+    model_config = ConfigDict(frozen=True, extra="forbid")                                                                                                                    
+    trainer_type: Literal["huggingface_sft", "accelerate", "lightning"] = Field(default="huggingface_sft")                                                                    
+    per_device_train_batch_size: int = Field(default=4, ge=1)                                                                                                                 
+    gradient_accumulation_steps: int = Field(default=4, ge=1)                                                                                                                 
+    learning_rate: float = Field(default=2e-4, ge=1e-6, le=1e-3)                                                                                                              
+    logging_steps: int = Field(default=10, ge=1)                                                                                                                              
+    max_steps: int = Field(default=1000, ge=1)                                                                                                                                
+    bf16: bool = Field(default=True)                                                                                                                                          
+    optim: Literal["adamw_torch", "paged_adamw_8bit", "adamw_hf", "adamw_apex_fused", "adamw_anyprecision"] = Field(default="paged_adamw_8bit")                               
+    fp16: bool = Field(default=False)
+    save_strategy: Literal["steps", "epoch"] = Field(default="steps")
+    save_steps: int = Field(default=50, ge=1)
+    report_to: Literal["wandb", "tensorboard", "mlflow", "all", "none"] = Field(default="none")
+    max_length: int = Field(default=512, ge=1)
+    dataset_text_field: str = Field(default="text", description="Field name in the dataset containing text data")
 
 class FsdpConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -125,6 +140,7 @@ class ExperimentConfig(BaseModel):
     llm_model: LLMModelConfig
     quantization: QuantizationConfig = Field(default_factory=QuantizationConfig)
     peft: PEFTConfig = Field(default_factory=PEFTConfig)
+    training_args: TrainingArgs = Field(default_factory=TrainingArgs)
     hardware: HardwareConfig = Field(default_factory=HardwareConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     registry: RegistryConfig = Field(default_factory=RegistryConfig)

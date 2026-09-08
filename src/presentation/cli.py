@@ -9,10 +9,12 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
+from src.application.usecases.train_model_usecase import TrainModelUseCase
 from src.application.usecases.train_pipeline import TrainPipelineUsecase
 from src.domain.exceptions import DomainError
 from src.infrastructure.config.yaml_loader import YamlConfigLoader
 from src.infrastructure.factories.dataset_factory import DatasetLoaderFactory
+from src.infrastructure.factories.trainer_factory import TrainerFactory
 from src.infrastructure.huggingface.huggingface_tokenizer import HuggingFaceTokenizer
 
 
@@ -43,13 +45,20 @@ def main() -> None:
 
     try:
         config_loader = YamlConfigLoader(config_path=config_path)
+        config = config_loader.load_config()
+
         dataset_factory = DatasetLoaderFactory()
         tokenizer_loader = HuggingFaceTokenizer()
+
+        # Composition Root: Resolve trainer adapter and inject into atomic use case
+        trainer = TrainerFactory.get_trainer(config.training_args.trainer_type)
+        train_model_usecase = TrainModelUseCase(trainer=trainer)
 
         pipeline = TrainPipelineUsecase(
             config_loader=config_loader,
             dataset_loader_factory=dataset_factory,
             tokenizer_loader=tokenizer_loader,
+            train_model_usecase=train_model_usecase,
         )
 
         result = pipeline.run()
@@ -61,6 +70,8 @@ def main() -> None:
         print(f"Execution Status  : {result.status}")
         print(f"Elapsed Time      : {result.duration_seconds}s")
         print(f"Artifacts Output  : {result.output_dir}")
+        if result.train_loss is not None:
+            print(f"Final Train Loss  : {result.train_loss:.4f}")
         if result.dataset_size:
             print(f"Dataset Partitions: {result.dataset_size}")
         print("=======================================================\n")

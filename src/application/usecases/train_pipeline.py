@@ -1,6 +1,6 @@
 """
 src/application/usecases/train_pipeline.py
-Orchestration pipeline use case connecting domain configurations, data ingestion, preprocessing, and model preparation.
+Orchestration pipeline use case connecting domain configurations, data ingestion, preprocessing, model preparation, and training.
 """
 
 import logging
@@ -10,6 +10,7 @@ from typing import Any, Optional, Tuple
 from src.application.services.dataset_processor import DatasetProcessor
 from src.application.usecases.load_dataset_usecase import LoadDatasetUseCase
 from src.application.usecases.preprocess_dataset_usecase import PreprocessDatasetUseCase
+from src.application.usecases.train_model_usecase import TrainModelUseCase
 from src.domain.exceptions import DomainError, PipelineExecutionError
 from src.domain.interfaces.config_loader import ConfigLoaderBase
 from src.domain.interfaces.model_loader import ModelLoaderBase
@@ -28,7 +29,7 @@ class TrainPipelineUsecase:
     """
     Enterprise orchestration use case executing fine-tuning pipeline stages.
     Coordinates configuration loading, dataset loading, chat-template formatting,
-    quantized model loading, and LoRA adapter wrapping.
+    quantized model loading, LoRA adapter wrapping, and model training.
     """
 
     def __init__(
@@ -37,11 +38,13 @@ class TrainPipelineUsecase:
         dataset_loader_factory: Optional[DatasetLoaderFactory] = None,
         tokenizer_loader: Optional[TokenizerBase] = None,
         llm_model_loader: Optional[ModelLoaderBase] = None,
+        train_model_usecase: Optional[TrainModelUseCase] = None,
     ) -> None:
         self.config_loader = config_loader
         self.dataset_loader_factory = dataset_loader_factory or DatasetLoaderFactory()
         self.tokenizer_loader = tokenizer_loader or HuggingFaceTokenizer()
         self.llm_model_loader = llm_model_loader or TransformerLlmModelLoader()
+        self.train_model_usecase = train_model_usecase
         self.config: Optional[ExperimentConfig] = None
         self.llm_base_model: Any = None
         self.peft_model: Any = None
@@ -70,6 +73,16 @@ class TrainPipelineUsecase:
             # 3. Load Quantized Foundation Model and Attach LoRA Adapters
             model = self._prepare_model(self.config)
 
+            # 4. Execute Model Training Stage (if TrainModelUseCase is configured)
+            train_output = None
+            if self.train_model_usecase is not None:
+                train_output = self._execute_training(
+                    config=self.config,
+                    model=model,
+                    train_dataset=processed_dataset,
+                    tokenizer=tokenizer,
+                )
+
             elapsed_seconds = time.perf_counter() - pipeline_start_time
             logger.info(
                 "Fine-tuning pipeline completed successfully in %.2f seconds.",
@@ -82,11 +95,23 @@ class TrainPipelineUsecase:
             elif hasattr(processed_dataset, "__len__"):
                 dataset_sizes = {"train": len(processed_dataset)}
 
+            # Extract metrics from training output if available
+            train_loss = None
+            metrics = None
+            if train_output is not None:
+                train_loss = getattr(train_output, "training_loss", None)
+                metrics = getattr(train_output, "metrics", None)
+                if isinstance(train_output, dict):
+                    train_loss = train_output.get("training_loss", train_output.get("train_loss"))
+                    metrics = train_output
+
             return TrainPipelineResult(
                 experiment_name=self.config.experiment.name,
                 status="SUCCESS",
                 output_dir=str(self.config.artifact.output_dir),
                 duration_seconds=round(elapsed_seconds, 2),
+                train_loss=train_loss,
+                metrics=metrics,
                 dataset_size=dataset_sizes,
                 model=model,
                 tokenizer=tokenizer,
@@ -164,3 +189,44 @@ class TrainPipelineUsecase:
 
         self.peft_model = self.llm_base_model
         return self.peft_model
+
+    def _execute_training(
+        self,
+        config: ExperimentConfig,
+        model: Any,
+        train_dataset: Any,
+        tokenizer: Any,
+    ) -> Any:
+        """
+        Execute model training using the injected TrainModelUseCase.
+
+        Args:
+            config: Validated experiment configuration.
+            model: Foundation or adapted PEFT model.
+            train_dataset: Formatted training dataset (Dataset or DatasetDict).
+            tokenizer: Model tokenizer.
+
+        Returns:
+            Any: Framework training output metrics.
+        """
+        output_dir = str(config.artifact.output_dir)
+
+        # Unpack split partitions if dataset is a DatasetDict
+        train_split = train_dataset
+        eval_split = None
+        if hasattr(train_dataset, "keys") and hasattr(train_dataset, "__getitem__"):
+            train_split = train_dataset.get("train", next(iter(train_dataset.values())))
+            eval_split = train_dataset.get("test") or train_dataset.get("validation") or train_dataset.get("eval")
+            logger.info("Extracted 'train' partition (%d examples) for training.", len(train_split))
+            if eval_split is not None:
+                logger.info("Extracted evaluation partition (%d examples) for evaluation.", len(eval_split))
+
+        logger.info("Executing training stage via TrainModelUseCase (output_dir='%s')...", output_dir)
+        return self.train_model_usecase.execute(
+            model=model,
+            train_dataset=train_split,
+            eval_dataset=eval_split,
+            training_args=config.training_args,
+            tokenizer=tokenizer,
+            output_dir=output_dir,
+        )
