@@ -39,12 +39,14 @@ class TrainPipelineUsecase:
         tokenizer_loader: Optional[TokenizerBase] = None,
         llm_model_loader: Optional[ModelLoaderBase] = None,
         train_model_usecase: Optional[TrainModelUseCase] = None,
+        callbacks: Optional[list] = None,
     ) -> None:
         self.config_loader = config_loader
         self.dataset_loader_factory = dataset_loader_factory or DatasetLoaderFactory()
         self.tokenizer_loader = tokenizer_loader or HuggingFaceTokenizer()
         self.llm_model_loader = llm_model_loader or TransformerLlmModelLoader()
         self.train_model_usecase = train_model_usecase
+        self.callbacks = callbacks or []
         self.config: Optional[ExperimentConfig] = None
         self.llm_base_model: Any = None
         self.peft_model: Any = None
@@ -229,4 +231,5 @@ class TrainPipelineUsecase:
             training_args=config.training_args,
             tokenizer=tokenizer,
             output_dir=output_dir,
+            callbacks=self.callbacks,
         )

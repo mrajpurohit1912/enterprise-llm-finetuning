@@ -28,9 +28,11 @@ dependencies = [
     "datasets>=5.0.0",
     "dotenv>=0.9.9",
     "peft>=0.19.1",
+    "prometheus-client>=0.20.0",
     "torch>=2.13.0",
     "transformers>=5.14.1",
     "trl>=1.8.0",
+    "wandb>=0.20.0",
 ]
 
 [project.scripts]

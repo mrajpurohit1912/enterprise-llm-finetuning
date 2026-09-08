@@ -68,6 +68,8 @@ class TrlTrainer(TrainerBase):
                     eval_dataset = train_dataset.get("test") or train_dataset.get("validation") or train_dataset.get("eval")
                 train_dataset = train_dataset["train"]
 
+        callbacks = kwargs.pop("callbacks", None)
+
         # 3. Instantiate SFTTrainer
         trainer = SFTTrainer(
             model=model,
@@ -75,17 +77,22 @@ class TrlTrainer(TrainerBase):
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             processing_class=tokenizer,
+            callbacks=callbacks,
             **kwargs,
         )
 
-        # 3. Train model
+        # 4. Train model
         logger.info("Starting model training with TRL SFTTrainer (max_steps=%d)...", training_args.max_steps)
-        train_result = trainer.train()
+        try:
+            train_result = trainer.train()
 
-        # 4. Persist fine-tuned weights and tokenizer
-        logger.info("Saving fine-tuned model and artifacts to '%s'...", save_path)
-        trainer.save_model(save_path)
-        if tokenizer is not None:
-            tokenizer.save_pretrained(save_path)
+            # 5. Persist fine-tuned weights and tokenizer
+            logger.info("Saving fine-tuned model and artifacts to '%s'...", save_path)
+            trainer.save_model(save_path)
+            if tokenizer is not None:
+                tokenizer.save_pretrained(save_path)
 
-        return train_result
+            return train_result
+        finally:
+            from src.infrastructure.monitoring.wandb_tracker import WandbTracker
+            WandbTracker.finish()
