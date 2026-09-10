@@ -49,6 +49,11 @@ def parse_args() -> argparse.Namespace:
         default=os.getenv("LOG_LEVEL", "INFO"),
         help="Logging verbosity level",
     )
+    parser.add_argument(
+        "--eval-only",
+        action="store_true",
+        help="Skip training and run standalone evaluation on the existing saved model artifacts",
+    )
     return parser.parse_args()
 
 
@@ -91,7 +96,7 @@ def main() -> None:
             callbacks=callbacks,
         )
 
-        result = pipeline.run()
+        result = pipeline.run(eval_only=args.eval_only)
 
         print("\n=======================================================")
         print("          FINE-TUNING PIPELINE RUN SUMMARY             ")

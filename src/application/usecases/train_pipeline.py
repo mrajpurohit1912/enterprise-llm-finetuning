@@ -5,6 +5,7 @@ Orchestration pipeline use case connecting domain configurations, data ingestion
 
 import logging
 import time
+from pathlib import Path
 from typing import Any, Optional, Tuple
 
 from src.application.services.dataset_processor import DatasetProcessor
@@ -55,9 +56,12 @@ class TrainPipelineUsecase:
         self.llm_base_model: Any = None
         self.peft_model: Any = None
 
-    def run(self) -> TrainPipelineResult:
+    def run(self, eval_only: bool = False) -> TrainPipelineResult:
         """
         Execute end-to-end pipeline stages with lifecycle telemetry and error boundaries.
+
+        Args:
+            eval_only: If True, skips training and evaluates the existing model/adapter.
 
         Returns:
             TrainPipelineResult: Strongly-typed operational result DTO.
@@ -66,7 +70,7 @@ class TrainPipelineUsecase:
             PipelineExecutionError: If any pipeline stage encounters an unrecoverable failure.
         """
         pipeline_start_time = time.perf_counter()
-        logger.info("Initializing enterprise LLM fine-tuning pipeline...")
+        logger.info("Initializing enterprise LLM fine-tuning pipeline (eval_only: %s)...", eval_only)
 
         try:
             # 1. Load and Validate Configuration
@@ -82,17 +86,20 @@ class TrainPipelineUsecase:
             processed_dataset, tokenizer = self._prepare_data(self.config)
 
             # 3. Load Quantized Foundation Model and Attach LoRA Adapters
-            model = self._prepare_model(self.config)
+            adapter_dir = str(self.config.artifact.output_dir) if eval_only else None
+            model = self._prepare_model(self.config, adapter_path=adapter_dir)
 
-            # 4. Execute Model Training Stage (if TrainModelUseCase is configured)
+            # 4. Execute Model Training Stage (if not eval_only and TrainModelUseCase is configured)
             train_output = None
-            if self.train_model_usecase is not None:
+            if not eval_only and self.train_model_usecase is not None:
                 train_output = self._execute_training(
                     config=self.config,
                     model=model,
                     train_dataset=processed_dataset,
                     tokenizer=tokenizer,
                 )
+            elif eval_only:
+                logger.info("Executing in eval-only mode. Skipping training loop.")
 
             # 5. Execute Post-Training Model Evaluation Stage (if configured)
             eval_result = None
@@ -242,15 +249,16 @@ class TrainPipelineUsecase:
 
         return processed_dataset, tokenizer
 
-    def _prepare_model(self, config: ExperimentConfig) -> Any:
+    def _prepare_model(self, config: ExperimentConfig, adapter_path: Optional[str] = None) -> Any:
         """
         Execute foundation model loading, precision quantization, and PEFT adapter wrapping.
 
         Args:
             config: Validated experiment configuration.
+            adapter_path: Optional path to existing trained adapter checkpoint.
 
         Returns:
-            Any: Configured PEFT / base model ready for training.
+            Any: Configured PEFT / base model ready for training or evaluation.
         """
         model_id = config.llm_model.llm_model_id
         is_4bit = bool(config.quantization and config.quantization.load_in_4bit)
@@ -261,6 +269,17 @@ class TrainPipelineUsecase:
             quantization_config=config.quantization,
             trust_remote_code=config.llm_model.trust_remote_code,
         )
+
+        if adapter_path:
+            p = Path(adapter_path)
+            if (p / "adapter_model.safetensors").exists() or (p / "adapter_model.bin").exists():
+                try:
+                    from peft import PeftModel
+                    logger.info("Loading existing trained LoRA adapter from '%s'...", adapter_path)
+                    self.peft_model = PeftModel.from_pretrained(self.llm_base_model, str(adapter_path))
+                    return self.peft_model
+                except Exception as exc:
+                    logger.warning("Failed to load adapter from '%s': %s. Re-initializing new adapter.", adapter_path, exc)
 
         if config.peft:
             logger.info("Attaching LoRA adapters (r=%d, alpha=%d)...", config.peft.r, config.peft.lora_alpha)
