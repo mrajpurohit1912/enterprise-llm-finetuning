@@ -3,7 +3,7 @@
 # ==============================================================================
 
 experiment:
-  name: "qwen2.5-0.5b-officeqa-v1"
+  name: "qwen2.5-0.5b-officeqa-v2"
   project: "enterprise-llm-finetuning"
   seed: 42
   tags:
@@ -50,13 +50,13 @@ training_args:
   gradient_accumulation_steps: 4                                                                                                                                              
   learning_rate: 2e-4                                                                                                                                                         
   logging_steps: 10                                                                                                                                                           
-  max_steps: 100                                                                                                                                                              
+  max_steps: 300                                                                                                                                                             
   bf16: true                                                                                                                                                                  
   fp16: false                                                                                                                                                                 
   optim: "paged_adamw_8bit"                                                                                                                                                   
   save_strategy: "steps"                                                                                                                                                      
   save_steps: 50                                                                                                                                                              
-  report_to: "none"                                                                                                                                                           
+  report_to: "wandb"                                                                                                                                                           
   max_length: 512                                                                                                                                                             
   dataset_text_field: "text"  
 
@@ -79,6 +79,15 @@ monitoring:
     prometheus_port: 8000
     enable_tensorboard: true
     mlflow: false
+
+evaluation:
+  evaluator_type: "deterministic"
+  eval_split: "test"
+  max_eval_samples: 30
+  batch_size: 4
+  max_new_tokens: 128
+  temperature: 0.1
+  min_f1_threshold: 0.50
 
 registry:
   registry_type: "hf_hub" # Options: hf_hub | s3 | local | mlflow

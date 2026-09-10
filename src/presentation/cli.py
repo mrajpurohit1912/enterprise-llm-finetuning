@@ -10,11 +10,13 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
+from src.application.usecases.evaluate_model_usecase import EvaluateModelUseCase
 from src.application.usecases.train_model_usecase import TrainModelUseCase
 from src.application.usecases.train_pipeline import TrainPipelineUsecase
 from src.domain.exceptions import DomainError
 from src.infrastructure.config.yaml_loader import YamlConfigLoader
 from src.infrastructure.factories.dataset_factory import DatasetLoaderFactory
+from src.infrastructure.factories.evaluator_factory import EvaluatorFactory
 from src.infrastructure.factories.trainer_factory import TrainerFactory
 from src.infrastructure.huggingface.huggingface_tokenizer import HuggingFaceTokenizer
 from src.infrastructure.logging import setup_logging
@@ -74,11 +76,18 @@ def main() -> None:
         trainer = TrainerFactory.get_trainer(config.training_args.trainer_type)
         train_model_usecase = TrainModelUseCase(trainer=trainer)
 
+        # Composition Root: Resolve evaluator adapter and inject into atomic use case
+        evaluate_model_usecase = None
+        if config.evaluation is not None:
+            evaluator = EvaluatorFactory.get_evaluator(config.evaluation.evaluator_type)
+            evaluate_model_usecase = EvaluateModelUseCase(evaluator=evaluator)
+
         pipeline = TrainPipelineUsecase(
             config_loader=config_loader,
             dataset_loader_factory=dataset_factory,
             tokenizer_loader=tokenizer_loader,
             train_model_usecase=train_model_usecase,
+            evaluate_model_usecase=evaluate_model_usecase,
             callbacks=callbacks,
         )
 
@@ -95,6 +104,12 @@ def main() -> None:
             print(f"Final Train Loss  : {result.train_loss:.4f}")
         if result.dataset_size:
             print(f"Dataset Partitions: {result.dataset_size}")
+        if result.evaluation is not None:
+            print(f"Evaluation F1     : {result.evaluation.metrics.f1_score:.4f}")
+            print(f"Exact Match (EM)  : {result.evaluation.metrics.exact_match:.4f}")
+            print(f"ROUGE-L           : {result.evaluation.metrics.rouge_l or 0.0:.4f}")
+            gate = "PASSED" if result.evaluation.passed_quality_gate else "FAILED"
+            print(f"Quality Gate      : {gate}")
         print("=======================================================\n")
     except DomainError as err:
         print(f"[Domain Error] {err}", file=sys.stderr)

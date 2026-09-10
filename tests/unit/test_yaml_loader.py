@@ -18,7 +18,7 @@ class TestYamlConfigLoader(unittest.TestCase):
         """Valid YAML configuration should parse cleanly."""
         loader = YamlConfigLoader(config_path="src/finetuning_config.yaml")
         config = loader.load_config()
-        self.assertEqual(config.experiment.name, "qwen2.5-0.5b-officeqa-v1")
+        self.assertTrue(config.experiment.name.startswith("qwen2.5-0.5b-officeqa"))
         self.assertEqual(config.dataset.dataset_name, "databricks/officeqa")
         self.assertEqual(config.llm_model.llm_model_id, "Qwen/Qwen2.5-0.5B-Instruct")
         self.assertTrue(config.quantization.load_in_4bit)

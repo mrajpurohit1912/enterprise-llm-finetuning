@@ -1,0 +1,27 @@
+// ==============================================================================
+// Grafana Alloy Scrape & Remote Write Template
+// Copy to /etc/alloy/config.alloy and replace with your Grafana Cloud credentials
+// ==============================================================================
+
+// 1. Scrape fine-tuning metrics from our Python application on port 8000
+prometheus.scrape "llm_finetuning" {
+  targets = [
+    {"__address__" = "127.0.0.1:8000"},
+  ]
+  scrape_interval = "10s"
+  scrape_timeout  = "5s"
+  forward_to      = [prometheus.remote_write.metrics_hosted_prometheus.receiver]
+}
+
+// 2. Push collected metrics to Grafana Cloud
+prometheus.remote_write "metrics_hosted_prometheus" {
+   endpoint {
+      name = "hosted-prometheus"
+      url  = "https://<your-prometheus-instance-url>/api/prom/push"
+  
+      basic_auth {
+        username = "<your-grafana-cloud-username>"
+        password = "<your-grafana-cloud-token>"
+      }
+   }
+}

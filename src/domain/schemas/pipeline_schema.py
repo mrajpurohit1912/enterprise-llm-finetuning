@@ -22,3 +22,4 @@ class TrainPipelineResult:
     dataset_size: Optional[Dict[str, int]] = None
     model: Optional[Any] = field(default=None, repr=False)
     tokenizer: Optional[Any] = field(default=None, repr=False)
+    evaluation: Optional[Any] = None

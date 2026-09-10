@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.domain.schemas.evaluation_schema import EvaluationConfig
+
 
 class DatasetSourceType(str, Enum):
     HUGGINGFACE = "huggingface"
@@ -143,5 +145,6 @@ class ExperimentConfig(BaseModel):
     training_args: TrainingArgs = Field(default_factory=TrainingArgs)
     hardware: HardwareConfig = Field(default_factory=HardwareConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
+    evaluation: Optional[EvaluationConfig] = Field(default_factory=EvaluationConfig)
     registry: RegistryConfig = Field(default_factory=RegistryConfig)
     artifact: ArtifactConfig = Field(default_factory=ArtifactConfig)

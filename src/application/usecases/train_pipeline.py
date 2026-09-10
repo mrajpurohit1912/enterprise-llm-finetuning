@@ -8,6 +8,7 @@ import time
 from typing import Any, Optional, Tuple
 
 from src.application.services.dataset_processor import DatasetProcessor
+from src.application.usecases.evaluate_model_usecase import EvaluateModelUseCase
 from src.application.usecases.load_dataset_usecase import LoadDatasetUseCase
 from src.application.usecases.preprocess_dataset_usecase import PreprocessDatasetUseCase
 from src.application.usecases.train_model_usecase import TrainModelUseCase
@@ -40,6 +41,7 @@ class TrainPipelineUsecase:
         tokenizer_loader: Optional[TokenizerBase] = None,
         llm_model_loader: Optional[ModelLoaderBase] = None,
         train_model_usecase: Optional[TrainModelUseCase] = None,
+        evaluate_model_usecase: Optional[EvaluateModelUseCase] = None,
         callbacks: Optional[list] = None,
     ) -> None:
         self.config_loader = config_loader
@@ -47,6 +49,7 @@ class TrainPipelineUsecase:
         self.tokenizer_loader = tokenizer_loader or HuggingFaceTokenizer()
         self.llm_model_loader = llm_model_loader or TransformerLlmModelLoader()
         self.train_model_usecase = train_model_usecase
+        self.evaluate_model_usecase = evaluate_model_usecase
         self.callbacks = callbacks or []
         self.config: Optional[ExperimentConfig] = None
         self.llm_base_model: Any = None
@@ -91,6 +94,45 @@ class TrainPipelineUsecase:
                     tokenizer=tokenizer,
                 )
 
+            # 5. Execute Post-Training Model Evaluation Stage (if configured)
+            eval_result = None
+            if self.evaluate_model_usecase is not None and self.config.evaluation is not None:
+                eval_split_name = self.config.evaluation.eval_split
+                eval_dataset = None
+                if hasattr(processed_dataset, "get"):
+                    eval_dataset = processed_dataset.get(eval_split_name)
+                    if eval_dataset is None and eval_split_name == "test":
+                        eval_dataset = processed_dataset.get("validation") or processed_dataset.get("eval")
+                elif hasattr(processed_dataset, "__getitem__") and hasattr(processed_dataset, "keys"):
+                    eval_dataset = processed_dataset.get(eval_split_name)
+
+                if eval_dataset is not None and len(eval_dataset) > 0:
+                    logger.info("Executing evaluation stage on split '%s' (%d samples)...", eval_split_name, len(eval_dataset))
+                    eval_result = self.evaluate_model_usecase.execute(
+                        model=model,
+                        tokenizer=tokenizer,
+                        eval_dataset=eval_dataset,
+                        eval_config=self.config.evaluation,
+                        experiment_name=self.config.experiment.name,
+                        model_id=self.config.llm_model.llm_model_id,
+                        output_dir=str(self.config.artifact.output_dir),
+                    )
+                    # Log evaluation scorecard to Weights & Biases if session active
+                    try:
+                        import wandb
+                        if wandb.run is not None:
+                            wandb.log({
+                                "eval/exact_match": eval_result.metrics.exact_match,
+                                "eval/f1_score": eval_result.metrics.f1_score,
+                                "eval/rouge_l": eval_result.metrics.rouge_l or 0.0,
+                                "eval/latency_per_sample_ms": eval_result.latency_per_sample_ms,
+                                "eval/throughput_tokens_per_sec": eval_result.throughput_tokens_per_sec,
+                            })
+                    except Exception:
+                        pass
+                else:
+                    logger.warning("Evaluation split '%s' not found in processed dataset. Skipping evaluation.", eval_split_name)
+
             elapsed_seconds = time.perf_counter() - pipeline_start_time
             logger.info(
                 "Fine-tuning pipeline completed successfully in %.2f seconds.",
@@ -123,6 +165,7 @@ class TrainPipelineUsecase:
                 dataset_size=dataset_sizes,
                 model=model,
                 tokenizer=tokenizer,
+                evaluation=eval_result,
             )
 
         except DomainError:
