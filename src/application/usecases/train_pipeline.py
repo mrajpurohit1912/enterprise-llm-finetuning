@@ -198,6 +198,36 @@ class TrainPipelineUsecase:
         load_usecase = LoadDatasetUseCase(loader=dataset_loader)
         raw_dataset = load_usecase.execute(dataset_config=config.dataset)
 
+        # Enterprise holdout split: if dataset lacks an eval split, auto-generate reproducible holdout partition
+        eval_split_target = config.dataset.eval_split or (config.evaluation.eval_split if config.evaluation else "test")
+        if eval_split_target:
+            if hasattr(raw_dataset, "keys") and eval_split_target not in raw_dataset and "train" in raw_dataset:
+                train_len = len(raw_dataset["train"]) if hasattr(raw_dataset["train"], "__len__") else 0
+                if train_len > 1:
+                    test_size = 0.15 if train_len >= 5 else 1
+                    logger.info(
+                        "Raw dataset only contains 'train' split. Creating reproducible holdout '%s' split (seed=%d)...",
+                        eval_split_target,
+                        config.experiment.seed,
+                    )
+                    splits = raw_dataset["train"].train_test_split(test_size=test_size, seed=config.experiment.seed)
+                    if eval_split_target != "test":
+                        splits[eval_split_target] = splits.pop("test")
+                    raw_dataset = splits
+            elif hasattr(raw_dataset, "train_test_split") and not hasattr(raw_dataset, "keys"):
+                ds_len = len(raw_dataset) if hasattr(raw_dataset, "__len__") else 0
+                if ds_len > 1:
+                    test_size = 0.15 if ds_len >= 5 else 1
+                    logger.info(
+                        "Raw dataset is a single partition. Creating reproducible holdout '%s' split (seed=%d)...",
+                        eval_split_target,
+                        config.experiment.seed,
+                    )
+                    splits = raw_dataset.train_test_split(test_size=test_size, seed=config.experiment.seed)
+                    if eval_split_target != "test":
+                        splits[eval_split_target] = splits.pop("test")
+                    raw_dataset = splits
+
         logger.info("Initializing tokenizer for model: '%s'...", config.llm_model.llm_model_id)
         tokenizer = self.tokenizer_loader.get_tokenizer(
             model_name=config.llm_model.llm_model_id,
