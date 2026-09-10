@@ -152,6 +152,20 @@ class TestConfigSchema(unittest.TestCase):
         config2 = ExperimentConfig.model_validate(data)
         self.assertEqual(config2.artifact.output_dir, Path("./artifacts/test-run-001/checkpoints"))
 
+    def test_auto_experiment_name_generation(self) -> None:
+        """When experiment.name is 'auto', dynamically build structured unique name."""
+        data = dict(self.valid_data)
+        data["experiment"] = {"name": "auto", "project": "tests"}
+        data["artifact"] = {"output_dir": "./outputs/{experiment.name}"}
+        config = ExperimentConfig.model_validate(data)
+
+        # Name should contain model slug, dataset slug, and qlora-r32
+        self.assertIn("qwen2.5-0.5b", config.experiment.name)
+        self.assertIn("officeqa", config.experiment.name)
+        self.assertIn("qlora-r32", config.experiment.name)
+        # output_dir should be synchronized
+        self.assertEqual(config.artifact.output_dir, Path(f"./outputs/{config.experiment.name}"))
+
 
 if __name__ == "__main__":
     unittest.main()

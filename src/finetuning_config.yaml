@@ -3,7 +3,7 @@
 # ==============================================================================
 
 experiment:
-  name: "qwen2.5-0.5b-officeqa-v3"
+  name: "auto"
   project: "enterprise-llm-finetuning"
   seed: 42
   tags:
@@ -23,11 +23,11 @@ llm_model:
   llm_model_id: "Qwen/Qwen2.5-0.5B-Instruct"
   trust_remote_code: false
 
-# quantization:
-#   load_in_4bit: true
-#   bnb_4bit_quant_type: "nf4"
-#   bnb_4bit_compute_dtype: "bfloat16"
-#   bnb_4bit_use_double_quant: true
+quantization:
+  load_in_4bit: false
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_use_double_quant: true
 
 peft:
   task_type: "CAUSAL_LM"

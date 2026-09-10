@@ -4,6 +4,7 @@ Strongly typed configuration models for enterprise LLM fine-tuning.
 Validated using Pydantic v2.
 """
 
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import List, Literal, Optional
@@ -150,11 +151,32 @@ class ExperimentConfig(BaseModel):
     artifact: ArtifactConfig = Field(default_factory=ArtifactConfig)
 
     @model_validator(mode="after")
-    def interpolate_dynamic_paths(self) -> "ExperimentConfig":
+    def resolve_dynamic_configurations(self) -> "ExperimentConfig":
         """
-        Dynamically interpolate placeholders like '{experiment.name}' or '${experiment.name}'
-        in artifact.output_dir with the validated experiment name.
+        1. Auto-generate self-describing experiment name if set to 'auto', 'default', or '{auto}'.
+        2. Dynamically interpolate placeholders like '{experiment.name}' or '${experiment.name}'
+           in artifact.output_dir with the validated experiment name.
         """
+        # 1. Generate semantic experiment name if requested
+        raw_name = self.experiment.name.strip()
+        if raw_name.lower() in ("auto", "default") or "{auto}" in raw_name:
+            model_slug = self.llm_model.llm_model_id.split("/")[-1].lower().replace("-instruct", "").replace("-it", "")
+            data_slug = self.dataset.dataset_name.split("/")[-1].lower()
+            is_qlora = bool(self.quantization and self.quantization.load_in_4bit)
+            method = "qlora" if is_qlora else "lora"
+            rank = f"r{self.peft.r}" if self.peft else "full"
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            auto_name = f"{model_slug}_{data_slug}_{method}-{rank}_{timestamp}"
+
+            if "{auto}" in raw_name:
+                final_name = raw_name.replace("{auto}", auto_name)
+            else:
+                final_name = auto_name
+
+            new_exp = self.experiment.model_copy(update={"name": final_name})
+            object.__setattr__(self, "experiment", new_exp)
+
+        # 2. Interpolate dynamic path placeholders in output_dir
         exp_name = self.experiment.name
         out_str = str(self.artifact.output_dir)
         patterns = ["${experiment.name}", "{experiment.name}", "${name}", "{name}"]
