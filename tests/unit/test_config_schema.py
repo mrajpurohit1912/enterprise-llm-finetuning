@@ -140,6 +140,18 @@ class TestConfigSchema(unittest.TestCase):
         with self.assertRaises(ValidationError):
             ExperimentConfig.model_validate(invalid_data)
 
+    def test_dynamic_output_dir_interpolation(self) -> None:
+        """Interpolate {experiment.name} and ${experiment.name} dynamically in output_dir."""
+        data = dict(self.valid_data)
+        data["artifact"] = {"output_dir": "./outputs/{experiment.name}"}
+        config = ExperimentConfig.model_validate(data)
+        self.assertEqual(config.artifact.output_dir, Path("./outputs/test-run-001"))
+
+        # Test ${experiment.name} pattern
+        data["artifact"] = {"output_dir": "./artifacts/${experiment.name}/checkpoints"}
+        config2 = ExperimentConfig.model_validate(data)
+        self.assertEqual(config2.artifact.output_dir, Path("./artifacts/test-run-001/checkpoints"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,7 @@ Validated using Pydantic v2.
 from enum import Enum
 from pathlib import Path
 from typing import List, Literal, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.domain.schemas.evaluation_schema import EvaluationConfig
 
@@ -148,3 +148,20 @@ class ExperimentConfig(BaseModel):
     evaluation: Optional[EvaluationConfig] = Field(default_factory=EvaluationConfig)
     registry: RegistryConfig = Field(default_factory=RegistryConfig)
     artifact: ArtifactConfig = Field(default_factory=ArtifactConfig)
+
+    @model_validator(mode="after")
+    def interpolate_dynamic_paths(self) -> "ExperimentConfig":
+        """
+        Dynamically interpolate placeholders like '{experiment.name}' or '${experiment.name}'
+        in artifact.output_dir with the validated experiment name.
+        """
+        exp_name = self.experiment.name
+        out_str = str(self.artifact.output_dir)
+        patterns = ["${experiment.name}", "{experiment.name}", "${name}", "{name}"]
+        for pat in patterns:
+            if pat in out_str:
+                resolved = Path(out_str.replace(pat, exp_name))
+                new_artifact = self.artifact.model_copy(update={"output_dir": resolved})
+                object.__setattr__(self, "artifact", new_artifact)
+                break
+        return self
