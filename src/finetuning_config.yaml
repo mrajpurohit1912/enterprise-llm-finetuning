@@ -20,11 +20,11 @@ dataset:
   eval_split: "test"
 
 llm_model:
-  llm_model_id: "Qwen/Qwen2.5-0.5B-Instruct"
+  llm_model_id: "microsoft/Phi-4-mini-instruct"
   trust_remote_code: false
 
 quantization:
-  load_in_4bit: false
+  load_in_4bit: true
   bnb_4bit_quant_type: "nf4"
   bnb_4bit_compute_dtype: "bfloat16"
   bnb_4bit_use_double_quant: true
@@ -36,18 +36,17 @@ peft:
   lora_dropout: 0.05
   bias: "none"
   target_modules:
-    - "q_proj"
-    - "k_proj"
-    - "v_proj"
+    - "qkv_proj"
     - "o_proj"
-    - "gate_proj"
-    - "up_proj"
+    - "gate_up_proj"
     - "down_proj"
+
+    
 
 training_args:                                                                                                                                                                
   trainer_type: "huggingface_sft"                                                                                                                                             
-  per_device_train_batch_size: 4                                                                                                                                              
-  gradient_accumulation_steps: 4                                                                                                                                              
+  per_device_train_batch_size: 1                                                                                                                                              
+  gradient_accumulation_steps: 8                                                                                                                                              
   learning_rate: 2e-4                                                                                                                                                         
   logging_steps: 10                                                                                                                                                           
   max_steps: 100                                                                                                                                                          
@@ -61,7 +60,7 @@ training_args:
   dataset_text_field: "text"  
 
 hardware:
-  distributed_strategy: "single_gpu" # Options: single_gpu | fsdp | deepspeed_stage_2 | deepspeed_stage_3
+  distributed_strategy: "fsdp" # Options: single_gpu | fsdp | deepspeed_stage_2 | deepspeed_stage_3
   fsdp_config:
     sharding_strategy: "full_shard"
     offload_params: false

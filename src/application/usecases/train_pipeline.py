@@ -332,4 +332,5 @@ class TrainPipelineUsecase:
             tokenizer=tokenizer,
             output_dir=output_dir,
             callbacks=self.callbacks,
+            hardware_config=config.hardware,
         )

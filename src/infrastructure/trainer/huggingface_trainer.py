@@ -43,21 +43,49 @@ class HuggingFaceTrainer(TrainerBase):
         """
         save_path = output_dir or "./outputs"
 
+        # 1. Extract hardware configuration                                                                                                                                                            
+        hardware_config = kwargs.pop("hardware_config", None)                                                                                                                                          
+        fsdp_strategy = None                                                                                                                                                                           
+        fsdp_config_dict = None                                                                                                                                                                        
+        deepspeed_arg = None                                                                                                                                                                           
+                                                                                                                                                                                                        
+        if hardware_config is not None:                                                                                                                                                                
+            strategy = hardware_config.distributed_strategy                                                                                                                                            
+            if strategy == "fsdp":                                                                                                                                                                     
+                sharding = hardware_config.fsdp_config.sharding_strategy                                                                                                                               
+                fsdp_strategy = f"{sharding} auto_wrap"                                                                                                                                                
+                if hardware_config.fsdp_config.offload_params:                                                                                                                                         
+                    fsdp_strategy += " offload"                                                                                                                                                        
+                fsdp_config_dict = {                                                                                                                                                                   
+                    "min_num_params": 1e8,                                                                                                                                                             
+                    "backward_prefetch": "backward_pre",                                                                                                                                               
+                    "forward_prefetch": True,                                                                                                                                                          
+                }                                                                                                                                                                                      
+            elif strategy == "deepspeed_stage_2":                                                                                                                                                      
+                deepspeed_arg = str(hardware_config.deepspeed_config_path) if hardware_config.deepspeed_config_path else "configs/ds_zero2.json"                                                       
+            elif strategy == "deepspeed_stage_3":                                                                                                                                                      
+                deepspeed_arg = str(hardware_config.deepspeed_config_path) if hardware_config.deepspeed_config_path else "configs/ds_zero3.json"                                                       
+                                                                                                                                                                
+
+
         # 1. Translate domain TrainingArgs into framework-native TrainingArguments
-        hf_args = TrainingArguments(
-            output_dir=save_path,
-            per_device_train_batch_size=training_args.per_device_train_batch_size,
-            gradient_accumulation_steps=training_args.gradient_accumulation_steps,
-            learning_rate=training_args.learning_rate,
-            logging_steps=training_args.logging_steps,
-            max_steps=training_args.max_steps,
-            bf16=training_args.bf16,
-            fp16=training_args.fp16,
-            optim=training_args.optim,
-            save_strategy=training_args.save_strategy,
-            save_steps=training_args.save_steps,
-            report_to=training_args.report_to,
-        )
+        hf_args = TrainingArguments(                                                                                                                                                                   
+                output_dir=save_path,                                                                                                                                                                      
+                per_device_train_batch_size=training_args.per_device_train_batch_size,                                                                                                                     
+                gradient_accumulation_steps=training_args.gradient_accumulation_steps,                                                                                                                     
+                learning_rate=training_args.learning_rate,                                                                                                                                                 
+                logging_steps=training_args.logging_steps,                                                                                                                                                 
+                max_steps=training_args.max_steps,                                                                                                                                                         
+                bf16=training_args.bf16,                                                                                                                                                                   
+                fp16=training_args.fp16,                                                                                                                                                                   
+                optim=training_args.optim,                                                                                                                                                                 
+                save_strategy=training_args.save_strategy,
+                save_steps=training_args.save_steps,
+                report_to=training_args.report_to,
+                fsdp=fsdp_strategy,
+                fsdp_config=fsdp_config_dict,
+                deepspeed=deepspeed_arg,
+            )
 
         # 2. Defensively extract split if DatasetDict is provided
         if hasattr(train_dataset, "keys") and hasattr(train_dataset, "__getitem__"):
