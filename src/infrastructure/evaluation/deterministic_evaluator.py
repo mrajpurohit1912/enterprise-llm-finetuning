@@ -240,9 +240,9 @@ class DeterministicEvaluator(EvaluatorBase):
                     prompt = user_msgs[-1]
                     answer = assistant_msgs[-1]
 
-            # Case 2: question and answer / response
-            elif "question" in item and ("answer" in item or "response" in item):
-                prompt = item["question"]
+            # Case 2: question/query and answer / response
+            elif ("question" in item or "query" in item) and ("answer" in item or "response" in item):
+                prompt = item.get("query") or item.get("question")
                 answer = item.get("answer") or item.get("response")
 
             # Case 3: instruction and output

@@ -7,20 +7,20 @@ experiment:
   project: "enterprise-llm-finetuning"
   seed: 42
   tags:
-    - "qwen2.5"
-    - "officeqa"
+    - "gemma-3"
+    - "flare-finqa"
     - "lora"
     - "sft"
 
 dataset:
   source: "huggingface" # Options: huggingface | local | s3 | kaggle | lakehouse
-  dataset_name: "databricks/officeqa"
-  subset_name: "officeqa_pro"
+  dataset_name: "ChanceFocus/flare-finqa"
+  subset_name: null
   train_split: "train"
   eval_split: "test"
 
 llm_model:
-  llm_model_id: "microsoft/Phi-4-mini-instruct"
+  llm_model_id: "google/gemma-3-1b-it"
   trust_remote_code: false
 
 quantization:
@@ -36,11 +36,13 @@ peft:
   lora_dropout: 0.05
   bias: "none"
   target_modules:
-    - "qkv_proj"
-    - "o_proj"
-    - "gate_up_proj"
-    - "down_proj"
-
+    - "q_proj"                                                                                                                                                                     
+    - "k_proj"                                                                                                                                                                     
+    - "v_proj"                                                                                                                                                                     
+    - "o_proj"                                                                                                                                                                     
+    - "gate_proj"                                                                                                                                                                  
+    - "up_proj"                                                                                                                                                                    
+    - "down_proj"  
     
 
 training_args:                                                                                                                                                                
@@ -56,11 +58,11 @@ training_args:
   save_strategy: "steps"                                                                                                                                                      
   save_steps: 50                                                                                                                                                              
   report_to: "wandb"                                                                                                                                                           
-  max_length: 512                                                                                                                                                             
+  max_length: 1536                                                                                                                                                             
   dataset_text_field: "text"  
 
 hardware:
-  distributed_strategy: "fsdp" # Options: single_gpu | fsdp | deepspeed_stage_2 | deepspeed_stage_3
+  distributed_strategy: "single_gpu" # Options: single_gpu | fsdp | deepspeed_stage_2 | deepspeed_stage_3
   fsdp_config:
     sharding_strategy: "full_shard"
     offload_params: false
@@ -90,7 +92,7 @@ evaluation:
 
 registry:
   registry_type: "hf_hub" # Options: hf_hub | s3 | local | mlflow
-  model_name: "Qwen-OfficeQA-LoRA"
+  model_name: "gemma-3-1b-it-finqa-LoRA"
   auto_register: true
 
 artifact:
