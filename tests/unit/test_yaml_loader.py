@@ -18,9 +18,9 @@ class TestYamlConfigLoader(unittest.TestCase):
         """Valid YAML configuration should parse cleanly."""
         loader = YamlConfigLoader(config_path="src/finetuning_config.yaml")
         config = loader.load_config()
-        self.assertTrue("qwen2.5-0.5b" in config.experiment.name and "officeqa" in config.experiment.name)
-        self.assertEqual(config.dataset.dataset_name, "databricks/officeqa")
-        self.assertEqual(config.llm_model.llm_model_id, "Qwen/Qwen2.5-0.5B-Instruct")
+        self.assertTrue("gemma-3-1b" in config.experiment.name and "finqa" in config.experiment.name)
+        self.assertEqual(config.dataset.dataset_name, "ChanceFocus/flare-finqa")
+        self.assertEqual(config.llm_model.llm_model_id, "google/gemma-3-1b-it")
         self.assertIsInstance(config.quantization.load_in_4bit, bool)
 
     def test_file_not_found_raises_configuration_error(self) -> None:

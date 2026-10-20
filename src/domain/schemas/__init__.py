@@ -3,6 +3,10 @@ src/domain/schemas/__init__.py
 Domain schemas package exports.
 """
 
+from src.domain.schemas.compute_schema import (
+    RemoteJobResult,
+    RemoteJobStatus,
+)
 from src.domain.schemas.config_schema import (
     ArtifactConfig,
     DatasetConfig,
@@ -45,6 +49,8 @@ __all__ = [
     "PEFTConfig",
     "QuantizationConfig",
     "RegistryConfig",
+    "RemoteJobResult",
+    "RemoteJobStatus",
     "TaskType",
     "TelemetryConfig",
     "TrainingArgs",

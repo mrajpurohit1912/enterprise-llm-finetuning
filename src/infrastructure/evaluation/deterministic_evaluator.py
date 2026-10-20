@@ -62,7 +62,7 @@ class DeterministicEvaluator(EvaluatorBase):
         device = next(model.parameters()).device
 
         # Track GPU VRAM
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(device)
 
         # Configure Tokenizer for Left-Padded Batch Generation
@@ -183,7 +183,7 @@ class DeterministicEvaluator(EvaluatorBase):
 
         peak_vram_mb = (
             round(torch.cuda.max_memory_allocated(device) / (1024 * 1024), 2)
-            if torch.cuda.is_available()
+            if torch.cuda.is_available() and device.type == "cuda"
             else None
         )
 

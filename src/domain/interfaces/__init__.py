@@ -4,6 +4,7 @@ Clean exports of core domain port interfaces.
 """
 
 from src.domain.interfaces.config_loader import ConfigLoaderBase
+from src.domain.interfaces.compute_provider import IComputeProvider, IComputerProvder
 from src.domain.interfaces.dataset_loader import DataLoaderBase
 from src.domain.interfaces.evaluator import EvaluatorBase
 from src.domain.interfaces.model_loader import ModelLoaderBase
@@ -14,6 +15,8 @@ __all__ = [
     "ConfigLoaderBase",
     "DataLoaderBase",
     "EvaluatorBase",
+    "IComputeProvider",
+    "IComputerProvder",
     "ModelLoaderBase",
     "PromptFormatterBase",
     "TokenizerBase",

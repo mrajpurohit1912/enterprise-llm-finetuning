@@ -42,5 +42,6 @@ finetune = "src.presentation.cli:main"
 [dependency-groups]
 dev = [
     "ipykernel>=7.3.0",
+    "kaggle>=2.2.4",
     "ruff>=0.16.6",
 ]
