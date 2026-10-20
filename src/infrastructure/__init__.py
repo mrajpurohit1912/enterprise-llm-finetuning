@@ -10,6 +10,12 @@ from src.infrastructure.huggingface import (
     HuggingFaceDatasetLoader,
     HuggingFaceTokenizer,
 )
+from src.infrastructure.logging import (
+    clear_logging_context,
+    get_logging_context,
+    set_logging_context,
+    setup_logging,
+)
 
 __all__ = [
     "ChatTemplateFormatter",
@@ -17,4 +23,9 @@ __all__ = [
     "HuggingFaceDatasetLoader",
     "HuggingFaceTokenizer",
     "YamlConfigLoader",
+    "setup_logging",
+    "set_logging_context",
+    "get_logging_context",
+    "clear_logging_context",
 ]
+

@@ -52,6 +52,7 @@ class ChatTemplateFormatter(PromptFormatterBase):
 
         # Strategy 2: Question / Answer or Instruction / Output pairs
         pair_candidates = [
+            ("query", "answer"),
             ("question", "answer"),
             ("prompt", "response"),
             ("instruction", "output"),

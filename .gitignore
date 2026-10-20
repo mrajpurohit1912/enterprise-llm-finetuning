@@ -18,6 +18,7 @@
 *.secret
 *.p12
 *.crt
+*.alloy
 id_rsa
 id_ed25519
 

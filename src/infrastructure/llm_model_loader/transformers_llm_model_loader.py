@@ -4,6 +4,7 @@ import torch
 
 from src.domain.interfaces.model_loader import ModelLoaderBase
 from src.domain.exceptions import ModelLoadError
+import os
 
 
 class TransformerLlmModelLoader(ModelLoaderBase):
@@ -32,20 +33,23 @@ class TransformerLlmModelLoader(ModelLoaderBase):
         if not model_id or not model_id.strip():
             raise ModelLoadError("Model ID cannot be empty or blank.")
 
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        device_map = {"": local_rank}
+
         try:
             bnb_config = self._build_bnb_config(quantization_config)
             if bnb_config is not None:
                 return AutoModelForCausalLM.from_pretrained(
                     pretrained_model_name_or_path=model_id.strip(),
                     quantization_config=bnb_config,
-                    device_map="auto",
+                    device_map=device_map,
                     **kwargs,
                 )
 
             return AutoModelForCausalLM.from_pretrained(
                 pretrained_model_name_or_path=model_id.strip(),
                 torch_dtype=torch.bfloat16,
-                device_map="auto",
+                device_map=device_map,
                 **kwargs,
             )
         except Exception as exc:

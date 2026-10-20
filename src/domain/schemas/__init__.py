@@ -19,21 +19,33 @@ from src.domain.schemas.config_schema import (
     RegistryConfig,
     TelemetryConfig,
 )
+from src.domain.schemas.evaluation_schema import (
+    EvaluationConfig,
+    EvaluationResult,
+    EvaluationSample,
+    MetricScores,
+    TaskType,
+)
 from src.domain.schemas.pipeline_schema import TrainPipelineResult
 
 __all__ = [
     "ArtifactConfig",
     "DatasetConfig",
     "DatasetSourceType",
+    "EvaluationConfig",
+    "EvaluationResult",
+    "EvaluationSample",
     "ExperimentConfig",
     "ExperimentInfo",
     "FsdpConfig",
     "HardwareConfig",
     "LLMModelConfig",
+    "MetricScores",
     "MonitoringConfig",
     "PEFTConfig",
     "QuantizationConfig",
     "RegistryConfig",
+    "TaskType",
     "TelemetryConfig",
     "TrainingArgs",
     "TrainPipelineResult",

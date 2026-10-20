@@ -3,24 +3,24 @@
 # ==============================================================================
 
 experiment:
-  name: "qwen2.5-0.5b-officeqa-v1"
+  name: "gemma-3-1b_flare-finqa_qlora-r16_20261002_155950"
   project: "enterprise-llm-finetuning"
   seed: 42
   tags:
-    - "qwen2.5"
-    - "officeqa"
+    - "gemma-3"
+    - "flare-finqa"
     - "lora"
     - "sft"
 
 dataset:
   source: "huggingface" # Options: huggingface | local | s3 | kaggle | lakehouse
-  dataset_name: "databricks/officeqa"
-  subset_name: "officeqa_pro"
+  dataset_name: "ChanceFocus/flare-finqa"
+  subset_name: null
   train_split: "train"
   eval_split: "test"
 
 llm_model:
-  llm_model_id: "Qwen/Qwen2.5-0.5B-Instruct"
+  llm_model_id: "google/gemma-3-1b-it"
   trust_remote_code: false
 
 quantization:
@@ -36,28 +36,29 @@ peft:
   lora_dropout: 0.05
   bias: "none"
   target_modules:
-    - "q_proj"
-    - "k_proj"
-    - "v_proj"
-    - "o_proj"
-    - "gate_proj"
-    - "up_proj"
-    - "down_proj"
+    - "q_proj"                                                                                                                                                                     
+    - "k_proj"                                                                                                                                                                     
+    - "v_proj"                                                                                                                                                                     
+    - "o_proj"                                                                                                                                                                     
+    - "gate_proj"                                                                                                                                                                  
+    - "up_proj"                                                                                                                                                                    
+    - "down_proj"  
+    
 
 training_args:                                                                                                                                                                
   trainer_type: "huggingface_sft"                                                                                                                                             
-  per_device_train_batch_size: 4                                                                                                                                              
-  gradient_accumulation_steps: 4                                                                                                                                              
+  per_device_train_batch_size: 1                                                                                                                                              
+  gradient_accumulation_steps: 8                                                                                                                                              
   learning_rate: 2e-4                                                                                                                                                         
   logging_steps: 10                                                                                                                                                           
-  max_steps: 100                                                                                                                                                              
+  max_steps: 100                                                                                                                                                          
   bf16: true                                                                                                                                                                  
   fp16: false                                                                                                                                                                 
   optim: "paged_adamw_8bit"                                                                                                                                                   
   save_strategy: "steps"                                                                                                                                                      
   save_steps: 50                                                                                                                                                              
-  report_to: "none"                                                                                                                                                           
-  max_length: 512                                                                                                                                                             
+  report_to: "wandb"                                                                                                                                                           
+  max_length: 1536                                                                                                                                                             
   dataset_text_field: "text"  
 
 hardware:
@@ -80,12 +81,27 @@ monitoring:
     enable_tensorboard: true
     mlflow: false
 
+evaluation:
+  task_type: "text_generation"
+  evaluator_type: "deterministic"
+  eval_split: "test"
+  max_eval_samples: 100
+  batch_size: 4
+  max_new_tokens: 128
+  temperature: 0.1
+  prompt_column: null # Auto-detects ('query' for flare-finqa)
+  target_column: null # Auto-detects ('answer' for flare-finqa)
+  compare_with_base_model: true # Enables comparative baseline delta evaluation
+  min_f1_threshold: 0.50
+  min_exact_match_threshold: null
+  fail_on_quality_gate_breach: false
+
 registry:
   registry_type: "hf_hub" # Options: hf_hub | s3 | local | mlflow
-  model_name: "Qwen-OfficeQA-LoRA"
+  model_name: "gemma-3-1b-it-finqa-LoRA"
   auto_register: true
 
 artifact:
-  output_dir: "./outputs/qwen2.5-0.5b-officeqa-v2"
+  output_dir: "./outputs/{experiment.name}"
   save_merged_model: true
   export_format: "safetensors"

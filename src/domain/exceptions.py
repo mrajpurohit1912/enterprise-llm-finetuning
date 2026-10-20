@@ -37,3 +37,9 @@ class PipelineExecutionError(DomainError):
 class TrainerError(DomainError):
     """Raised when trainer initialization or execution fails."""
     pass
+
+
+class ModelEvaluationError(DomainError):
+    """Raised when model evaluation, generation, or metric scoring fails."""
+    pass
+
