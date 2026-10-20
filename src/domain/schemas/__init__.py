@@ -24,6 +24,7 @@ from src.domain.schemas.evaluation_schema import (
     EvaluationResult,
     EvaluationSample,
     MetricScores,
+    TaskType,
 )
 from src.domain.schemas.pipeline_schema import TrainPipelineResult
 
@@ -44,6 +45,7 @@ __all__ = [
     "PEFTConfig",
     "QuantizationConfig",
     "RegistryConfig",
+    "TaskType",
     "TelemetryConfig",
     "TrainingArgs",
     "TrainPipelineResult",

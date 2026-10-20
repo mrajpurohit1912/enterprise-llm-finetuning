@@ -110,9 +110,21 @@ def main() -> None:
         if result.dataset_size:
             print(f"Dataset Partitions: {result.dataset_size}")
         if result.evaluation is not None:
+            print(f"Task Type         : {result.evaluation.task_type.value}")
             print(f"Evaluation F1     : {result.evaluation.metrics.f1_score:.4f}")
             print(f"Exact Match (EM)  : {result.evaluation.metrics.exact_match:.4f}")
             print(f"ROUGE-L           : {result.evaluation.metrics.rouge_l or 0.0:.4f}")
+            if result.evaluation.delta_metrics:
+                delta_f1 = result.evaluation.delta_metrics.get("delta_f1_score", 0.0)
+                delta_em = result.evaluation.delta_metrics.get("delta_exact_match", 0.0)
+                print(f"Delta Uplift (ΔF1): {delta_f1:+.4f}")
+                print(f"Delta Uplift (ΔEM): {delta_em:+.4f}")
+            if result.evaluation.tpot_ms_p50 is not None:
+                print(f"TPOT (P50 Decode) : {result.evaluation.tpot_ms_p50:.2f} ms/token")
+            if result.evaluation.ttft_ms_p50 is not None:
+                print(f"TTFT (P50 Prefill): {result.evaluation.ttft_ms_p50:.2f} ms")
+            if result.evaluation.peak_memory_mb is not None:
+                print(f"Peak GPU VRAM     : {result.evaluation.peak_memory_mb:.2f} MB")
             gate = "PASSED" if result.evaluation.passed_quality_gate else "FAILED"
             print(f"Quality Gate      : {gate}")
         print("=======================================================\n")

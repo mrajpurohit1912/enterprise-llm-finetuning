@@ -106,12 +106,17 @@ class TestDeterministicEvaluator(unittest.TestCase):
         mock_model = MagicMock()
         mock_param = torch.nn.Parameter(torch.tensor([1.0]))
         mock_model.parameters.return_value = iter([mock_param])
-        # Return input_ids (length 3) + generated ids (length 2)
-        mock_model.generate.return_value = torch.tensor([[101, 102, 103, 201, 202]])
+        # Return input_ids (length 3) + generated ids (length 2) for batch of 2
+        mock_model.generate.return_value = torch.tensor(
+            [[101, 102, 103, 201, 202], [101, 102, 103, 201, 202]]
+        )
 
         # Mock tokenizer
         mock_tokenizer = MagicMock()
-        mock_tokenizer.return_value = {"input_ids": torch.tensor([[101, 102, 103]])}
+        mock_tokenizer.return_value = {
+            "input_ids": torch.tensor([[101, 102, 103], [101, 102, 103]])
+        }
+        mock_tokenizer.batch_decode.return_value = ["Fine-tuned answer", "Different answer"]
         mock_tokenizer.decode.return_value = "Fine-tuned answer"
         mock_tokenizer.pad_token_id = 0
         mock_tokenizer.eos_token_id = 1

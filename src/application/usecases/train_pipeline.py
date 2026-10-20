@@ -128,13 +128,23 @@ class TrainPipelineUsecase:
                     try:
                         import wandb
                         if wandb.run is not None:
-                            wandb.log({
+                            wandb_payload = {
                                 "eval/exact_match": eval_result.metrics.exact_match,
                                 "eval/f1_score": eval_result.metrics.f1_score,
                                 "eval/rouge_l": eval_result.metrics.rouge_l or 0.0,
                                 "eval/latency_per_sample_ms": eval_result.latency_per_sample_ms,
                                 "eval/throughput_tokens_per_sec": eval_result.throughput_tokens_per_sec,
-                            })
+                            }
+                            if eval_result.ttft_ms_p50 is not None:
+                                wandb_payload["eval/ttft_ms_p50"] = eval_result.ttft_ms_p50
+                            if eval_result.tpot_ms_p50 is not None:
+                                wandb_payload["eval/tpot_ms_p50"] = eval_result.tpot_ms_p50
+                            if eval_result.peak_memory_mb is not None:
+                                wandb_payload["eval/peak_memory_mb"] = eval_result.peak_memory_mb
+                            if eval_result.delta_metrics:
+                                for metric_k, metric_v in eval_result.delta_metrics.items():
+                                    wandb_payload[f"eval/{metric_k}"] = metric_v
+                            wandb.log(wandb_payload)
                     except Exception:
                         pass
                 else:
