@@ -85,7 +85,8 @@ class TrlTrainer(TrainerBase):
             optim=training_args.optim,                                                                                                                                                                 
             save_strategy=training_args.save_strategy,                                                                                                                                                 
             save_steps=training_args.save_steps,                                                                                                                                                       
-            report_to=training_args.report_to,                                                                                                                                                         
+            report_to=training_args.report_to,
+            ddp_find_unused_parameters=False,
             # --- ADD DISTRIBUTED ARGS HERE ---                                                                                                                                                        
             fsdp=fsdp_strategy,                                                                                                                                                                        
             fsdp_config=fsdp_config_dict,                                                                                                                                                              

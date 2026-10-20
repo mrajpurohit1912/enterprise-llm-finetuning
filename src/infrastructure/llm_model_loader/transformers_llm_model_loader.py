@@ -39,19 +39,45 @@ class TransformerLlmModelLoader(ModelLoaderBase):
         try:
             bnb_config = self._build_bnb_config(quantization_config)
             if bnb_config is not None:
-                return AutoModelForCausalLM.from_pretrained(
+                compute_dtype = getattr(bnb_config, "bnb_4bit_compute_dtype", torch.float16)
+                model = AutoModelForCausalLM.from_pretrained(
                     pretrained_model_name_or_path=model_id.strip(),
                     quantization_config=bnb_config,
+                    dtype=compute_dtype,
+                    torch_dtype=compute_dtype,
+                    device_map=device_map,
+                    **kwargs,
+                )
+            else:
+                compute_dtype = torch.float16
+                model = AutoModelForCausalLM.from_pretrained(
+                    pretrained_model_name_or_path=model_id.strip(),
+                    dtype=compute_dtype,
+                    torch_dtype=compute_dtype,
                     device_map=device_map,
                     **kwargs,
                 )
 
-            return AutoModelForCausalLM.from_pretrained(
-                pretrained_model_name_or_path=model_id.strip(),
-                torch_dtype=torch.bfloat16,
-                device_map=device_map,
-                **kwargs,
-            )
+            # Align model config torch_dtype
+            if hasattr(model, "config"):
+                model.config.torch_dtype = compute_dtype
+
+            # Crucial: Safetensors checkpoints for Qwen ship in bfloat16. BitsAndBytes only
+            # quantizes linear layers into 4-bit, leaving non-quantized layers (embed_tokens,
+            # LayerNorm/RMSNorm, lm_head) in their native bfloat16 checkpoint precision.
+            # Because embed_tokens produces bfloat16 activations, all downstream activations
+            # and gradients become bfloat16, which causes PyTorch AMP GradScaler to crash on Turing T4 GPUs
+            # with: NotImplementedError: "_amp_foreach_non_finite_check_and_unscale_cuda" not implemented for 'BFloat16'.
+            # We explicitly cast all non-quantized bfloat16 parameters and buffers to compute_dtype (float16).
+            for name, param in model.named_parameters():
+                if param is not None and param.dtype == torch.bfloat16:
+                    param.data = param.data.to(compute_dtype)
+
+            for name, buf in model.named_buffers():
+                if buf is not None and buf.dtype == torch.bfloat16:
+                    buf.data = buf.data.to(compute_dtype)
+
+            return model
         except Exception as exc:
             raise ModelLoadError(
                 f"Failed to load LLM model '{model_id}': {exc}"
@@ -95,9 +121,13 @@ class TransformerLlmModelLoader(ModelLoaderBase):
         try:
             from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-            # Enable gradient checkpointing and prepare for k-bit training
-            model.gradient_checkpointing_enable()
-            model = prepare_model_for_kbit_training(model)
+            # Enable non-reentrant gradient checkpointing and prepare for k-bit training
+            model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+            model = prepare_model_for_kbit_training(
+                model,
+                use_gradient_checkpointing=True,
+                gradient_checkpointing_kwargs={"use_reentrant": False},
+            )
 
             lora_config = LoraConfig(
                 task_type=getattr(peft_config, "task_type", "CAUSAL_LM"),
@@ -108,6 +138,16 @@ class TransformerLlmModelLoader(ModelLoaderBase):
                 target_modules=getattr(peft_config, "target_modules", None),
             )
             peft_model = get_peft_model(model, lora_config)
+
+            # Defensive alignment: Ensure all trainable LoRA parameters and buffers match float16
+            for name, param in peft_model.named_parameters():
+                if param is not None and param.dtype == torch.bfloat16:
+                    param.data = param.data.to(torch.float16)
+
+            for name, buf in peft_model.named_buffers():
+                if buf is not None and buf.dtype == torch.bfloat16:
+                    buf.data = buf.data.to(torch.float16)
+
             peft_model.print_trainable_parameters()
             return peft_model
         except Exception as exc:

@@ -51,7 +51,7 @@ training_args:
   gradient_accumulation_steps: 4                                                                                                                                              
   learning_rate: 2e-4                                                                                                                                                         
   logging_steps: 10                                                                                                                                                           
-  max_steps: 100                                                                                                                                                          
+  max_steps: 782                                                                                                                                                          
   bf16: false                                                                                                                                                                  
   fp16: true                                                                                                                                                                 
   optim: "paged_adamw_8bit"                                                                                                                                                   
