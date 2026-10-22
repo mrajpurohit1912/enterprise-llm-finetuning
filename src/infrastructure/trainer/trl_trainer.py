@@ -113,6 +113,18 @@ class TrlTrainer(TrainerBase):
             **kwargs,
         )
 
+        # Counteract TRL's unconditional bfloat16 cast for quantized models when training in FP16.
+        # Under PyTorch AMP (fp16: true), optimizer master weights must be float32 so that
+        # autograd accumulates float32 gradients that GradScaler can unscale natively.
+        if training_args.fp16:
+            logger.info(
+                "Aligning trainable adapter parameters to float32 to counteract TRL SFTTrainer automatic bfloat16 cast for FP16 execution..."
+            )
+            import torch
+            for param in trainer.model.parameters():
+                if param.requires_grad:
+                    param.data = param.data.to(torch.float32)
+
         # 4. Train model
         logger.info("Starting model training with TRL SFTTrainer (max_steps=%d)...", training_args.max_steps)
         try:

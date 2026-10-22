@@ -139,14 +139,14 @@ class TransformerLlmModelLoader(ModelLoaderBase):
             )
             peft_model = get_peft_model(model, lora_config)
 
-            # Defensive alignment: Ensure all trainable LoRA parameters and buffers match float16
+            # Defensive alignment: Ensure trainable LoRA parameters and buffers do not retain bfloat16
             for name, param in peft_model.named_parameters():
                 if param is not None and param.dtype == torch.bfloat16:
-                    param.data = param.data.to(torch.float16)
+                    param.data = param.data.to(torch.float32)
 
             for name, buf in peft_model.named_buffers():
                 if buf is not None and buf.dtype == torch.bfloat16:
-                    buf.data = buf.data.to(torch.float16)
+                    buf.data = buf.data.to(torch.float32)
 
             peft_model.print_trainable_parameters()
             return peft_model
