@@ -9,6 +9,7 @@ from src.domain.interfaces.dataset_loader import DataLoaderBase
 from src.domain.interfaces.evaluator import EvaluatorBase
 from src.domain.interfaces.model_loader import ModelLoaderBase
 from src.domain.interfaces.prompt_formatter import PromptFormatterBase
+from src.domain.interfaces.sample_extractor import ISampleExtractor
 from src.domain.interfaces.tokenizer import TokenizerBase
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "EvaluatorBase",
     "IComputeProvider",
     "IComputerProvder",
+    "ISampleExtractor",
     "ModelLoaderBase",
     "PromptFormatterBase",
     "TokenizerBase",

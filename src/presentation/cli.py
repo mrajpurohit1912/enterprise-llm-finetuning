@@ -203,7 +203,10 @@ def main() -> None:
         # Composition Root: Resolve evaluator adapter and inject into atomic use case
         evaluate_model_usecase = None
         if config.evaluation is not None:
-            evaluator = EvaluatorFactory.get_evaluator(config.evaluation.evaluator_type)
+            evaluator = EvaluatorFactory.get_evaluator(
+                evaluator_type=config.evaluation.evaluator_type,
+                dataset_name=config.dataset.dataset_name,
+            )
             evaluate_model_usecase = EvaluateModelUseCase(evaluator=evaluator)
 
         pipeline = TrainPipelineUsecase(
@@ -233,6 +236,16 @@ def main() -> None:
             print(f"Evaluation F1     : {result.evaluation.metrics.f1_score:.4f}")
             print(f"Exact Match (EM)  : {result.evaluation.metrics.exact_match:.4f}")
             print(f"ROUGE-L           : {result.evaluation.metrics.rouge_l or 0.0:.4f}")
+            if result.evaluation.metrics.tolerance_accuracy_5pct is not None:
+                print(f"Tolerance Acc (<=5%): {result.evaluation.metrics.tolerance_accuracy_5pct * 100:.2f}%")
+            if result.evaluation.metrics.tolerance_accuracy_1pct is not None:
+                print(f"Strict Acc (<=1%)  : {result.evaluation.metrics.tolerance_accuracy_1pct * 100:.2f}%")
+            if result.evaluation.metrics.sign_accuracy is not None:
+                print(f"Sign Accuracy     : {result.evaluation.metrics.sign_accuracy * 100:.2f}%")
+            if result.evaluation.metrics.parseable_number_rate is not None:
+                print(f"Parseable Rate    : {result.evaluation.metrics.parseable_number_rate * 100:.2f}%")
+            if result.evaluation.metrics.median_relative_error is not None:
+                print(f"Median Rel Error  : {result.evaluation.metrics.median_relative_error * 100:.2f}%")
             if result.evaluation.delta_metrics:
                 delta_f1 = result.evaluation.delta_metrics.get("delta_f1_score", 0.0)
                 delta_em = result.evaluation.delta_metrics.get("delta_exact_match", 0.0)

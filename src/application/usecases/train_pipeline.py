@@ -13,7 +13,7 @@ from src.application.usecases.evaluate_model_usecase import EvaluateModelUseCase
 from src.application.usecases.load_dataset_usecase import LoadDatasetUseCase
 from src.application.usecases.preprocess_dataset_usecase import PreprocessDatasetUseCase
 from src.application.usecases.train_model_usecase import TrainModelUseCase
-from src.domain.exceptions import DomainError, PipelineExecutionError
+from src.domain.exceptions import DomainError, ModelLoadError, PipelineExecutionError
 from src.domain.interfaces.config_loader import ConfigLoaderBase
 from src.domain.interfaces.model_loader import ModelLoaderBase
 from src.domain.interfaces.tokenizer import TokenizerBase
@@ -282,14 +282,52 @@ class TrainPipelineUsecase:
 
         if adapter_path:
             p = Path(adapter_path)
-            if (p / "adapter_model.safetensors").exists() or (p / "adapter_model.bin").exists():
-                try:
-                    from peft import PeftModel
-                    logger.info("Loading existing trained LoRA adapter from '%s'...", adapter_path)
-                    self.peft_model = PeftModel.from_pretrained(self.llm_base_model, str(adapter_path))
-                    return self.peft_model
-                except Exception as exc:
-                    logger.warning("Failed to load adapter from '%s': %s. Re-initializing new adapter.", adapter_path, exc)
+            candidate_dirs = [p, p / p.name]
+
+            # Heuristic 1: If experiment name had suffixes (e.g. '-evaluation', '_eval'), check base experiment directory
+            cleaned_name = p.name.replace("-evaluation", "").replace("_evaluation", "").replace("-eval", "")
+            if cleaned_name != p.name and p.parent.exists():
+                fallback_dir = p.parent / cleaned_name
+                candidate_dirs.extend([fallback_dir, fallback_dir / cleaned_name])
+                if fallback_dir.exists():
+                    candidate_dirs.extend([f.parent for f in fallback_dir.glob("**/adapter_model.safetensors")])
+                    candidate_dirs.extend([f.parent for f in fallback_dir.glob("**/adapter_model.bin")])
+
+            # Also search any nested directories (e.g. from Kaggle unzipped outputs)
+            if p.exists():
+                candidate_dirs.extend([f.parent for f in p.glob("**/adapter_model.safetensors")])
+                candidate_dirs.extend([f.parent for f in p.glob("**/adapter_model.bin")])
+
+            # Heuristic 2: Check outputs/ root for any adapter matching the experiment prefix
+            outputs_root = p.parent if p.parent.exists() else Path("outputs")
+            if outputs_root.exists():
+                candidate_dirs.extend([
+                    f.parent for f in outputs_root.glob("**/adapter_model.safetensors")
+                    if "checkpoint-" not in f.parent.name
+                ])
+
+            seen_dirs = set()
+            for candidate in candidate_dirs:
+                cand_str = str(candidate.resolve()) if candidate.exists() else str(candidate)
+                if cand_str in seen_dirs:
+                    continue
+                seen_dirs.add(cand_str)
+
+                if (candidate / "adapter_model.safetensors").exists() or (candidate / "adapter_model.bin").exists():
+                    try:
+                        from peft import PeftModel
+                        logger.info("Loading existing trained LoRA adapter from '%s'...", candidate)
+                        self.peft_model = PeftModel.from_pretrained(self.llm_base_model, str(candidate))
+                        return self.peft_model
+                    except Exception as exc:
+                        logger.warning("Failed to load adapter from '%s': %s.", candidate, exc)
+
+            # Defensive failure boundary: in eval-only mode, never evaluate an untrained empty adapter
+            raise ModelLoadError(
+                f"No trained LoRA adapter found in '{adapter_path}' or any discovered candidate directories. "
+                f"In eval-only mode, a valid trained adapter checkpoint (adapter_model.safetensors) is required. "
+                f"Please ensure your experiment name matches the trained checkpoint or outputs directory."
+            )
 
         if config.peft:
             logger.info("Attaching LoRA adapters (r=%d, alpha=%d)...", config.peft.r, config.peft.lora_alpha)

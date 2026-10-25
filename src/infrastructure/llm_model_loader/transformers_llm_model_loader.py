@@ -33,12 +33,21 @@ class TransformerLlmModelLoader(ModelLoaderBase):
         if not model_id or not model_id.strip():
             raise ModelLoadError("Model ID cannot be empty or blank.")
 
-        local_rank = int(os.environ.get("LOCAL_RANK", 0))
-        device_map = {"": local_rank}
+        if torch.cuda.is_available():
+            local_rank = int(os.environ.get("LOCAL_RANK", 0))
+            device_map = {"": local_rank}
+        else:
+            device_map = "cpu"
 
         try:
             bnb_config = self._build_bnb_config(quantization_config)
             if bnb_config is not None:
+                if not torch.cuda.is_available():
+                    raise ModelLoadError(
+                        "4-bit quantization (BitsAndBytes NF4) requires an active NVIDIA CUDA GPU, "
+                        "but torch.cuda.is_available() is False. Ensure your NVIDIA driver is running "
+                        "or set 'quantization.load_in_4bit: false' in your configuration to run on CPU."
+                    )
                 compute_dtype = getattr(bnb_config, "bnb_4bit_compute_dtype", torch.float16)
                 model = AutoModelForCausalLM.from_pretrained(
                     pretrained_model_name_or_path=model_id.strip(),
@@ -49,7 +58,7 @@ class TransformerLlmModelLoader(ModelLoaderBase):
                     **kwargs,
                 )
             else:
-                compute_dtype = torch.float16
+                compute_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
                 model = AutoModelForCausalLM.from_pretrained(
                     pretrained_model_name_or_path=model_id.strip(),
                     dtype=compute_dtype,
