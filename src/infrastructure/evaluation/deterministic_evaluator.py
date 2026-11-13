@@ -140,8 +140,6 @@ class DeterministicEvaluator(EvaluatorBase):
                 ttft_measurements_ms.append(ttft_estimate_ms)
 
                 del encoded, inputs, outputs, newly_generated_tokens
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
 
                 # Score each sample in the batch
                 for idx, prediction_str in enumerate(decoded_predictions):

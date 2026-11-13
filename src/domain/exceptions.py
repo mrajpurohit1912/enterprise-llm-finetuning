@@ -49,3 +49,7 @@ class RemoteComputeError(DomainError):
     pass
 
 
+class ModelMergeError(DomainError):
+    """Raised when merging models fails."""
+    pass
+

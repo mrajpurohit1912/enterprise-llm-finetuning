@@ -1,19 +1,23 @@
 from typing import Any, Optional
+from pathlib import Path
 from transformers import AutoModelForCausalLM, PreTrainedModel
+from peft import PeftConfig, PeftModel
 import torch
 
 from src.domain.interfaces.model_loader import ModelLoaderBase
-from src.domain.exceptions import ModelLoadError
+from src.domain.exceptions import ModelLoadError,ModelMergeError
+from src.domain.interfaces.config_loader import ConfigLoaderBase
 import os
 
 
 class TransformerLlmModelLoader(ModelLoaderBase):
-    """Hugging Face causal language model loader adapter implementing ModelLoaderBase."""
-
-    def load_model(
+    """Hugging Face causal language model loader adapter implementing ModelLoaderBase."""     
+        
+    def load_base_model(
         self, 
         model_id: str, 
         quantization_config: Optional[Any] = None, 
+        device_map: Optional[Any] = None,
         **kwargs: Any,
     ) -> PreTrainedModel:
         """
@@ -33,11 +37,13 @@ class TransformerLlmModelLoader(ModelLoaderBase):
         if not model_id or not model_id.strip():
             raise ModelLoadError("Model ID cannot be empty or blank.")
 
-        if torch.cuda.is_available():
-            local_rank = int(os.environ.get("LOCAL_RANK", 0))
-            device_map = {"": local_rank}
-        else:
-            device_map = "cpu"
+
+        if device_map is None:
+            if torch.cuda.is_available():
+                local_rank = int(os.environ.get("LOCAL_RANK", 0))
+                device_map = {"": local_rank}
+            else:
+                device_map = "cpu"
 
         try:
             bnb_config = self._build_bnb_config(quantization_config)
@@ -58,12 +64,13 @@ class TransformerLlmModelLoader(ModelLoaderBase):
                     **kwargs,
                 )
             else:
-                compute_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+                compute_dtype = torch.float16 
                 model = AutoModelForCausalLM.from_pretrained(
                     pretrained_model_name_or_path=model_id.strip(),
                     dtype=compute_dtype,
                     torch_dtype=compute_dtype,
                     device_map=device_map,
+                    low_cpu_mem_usage=True,
                     **kwargs,
                 )
 
@@ -71,13 +78,7 @@ class TransformerLlmModelLoader(ModelLoaderBase):
             if hasattr(model, "config"):
                 model.config.torch_dtype = compute_dtype
 
-            # Crucial: Safetensors checkpoints for Qwen ship in bfloat16. BitsAndBytes only
-            # quantizes linear layers into 4-bit, leaving non-quantized layers (embed_tokens,
-            # LayerNorm/RMSNorm, lm_head) in their native bfloat16 checkpoint precision.
-            # Because embed_tokens produces bfloat16 activations, all downstream activations
-            # and gradients become bfloat16, which causes PyTorch AMP GradScaler to crash on Turing T4 GPUs
-            # with: NotImplementedError: "_amp_foreach_non_finite_check_and_unscale_cuda" not implemented for 'BFloat16'.
-            # We explicitly cast all non-quantized bfloat16 parameters and buffers to compute_dtype (float16).
+
             for name, param in model.named_parameters():
                 if param is not None and param.dtype == torch.bfloat16:
                     param.data = param.data.to(compute_dtype)
@@ -91,6 +92,35 @@ class TransformerLlmModelLoader(ModelLoaderBase):
             raise ModelLoadError(
                 f"Failed to load LLM model '{model_id}': {exc}"
             ) from exc
+
+    def load_adapters(
+            self,
+            base_model,
+            adapter_path:Path):
+        
+        try:
+            merged_model = PeftModel.from_pretrained(base_model, adapter_path)
+            return merged_model
+        except Exception as exc:
+            raise ModelLoadError(
+                f"Failed to merge base model and adapter {exc}"
+            ) from exc
+
+
+    def save_merged_model(self, peft_model: Any, output_dir: Path) -> Path:
+        try:
+            output_dir = Path(output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+  
+            # 1. Fuse weights
+            fused_model = peft_model.merge_and_unload()                                                                                                                                
+                                                                                                                                                                                       
+            # 2. Save standalone safetensors weights                                                                                                                                   
+            fused_model.save_pretrained(str(output_dir), safe_serialization=True)                                                                                                      
+            return output_dir                                                                                                                                                          
+        except Exception as exc:                                                                                                                                                       
+            raise ModelMergeError(f"Failed to save merged model: {exc}") from exc    
+
 
     def _build_bnb_config(self, quantization_config: Optional[Any]) -> Optional[Any]:
         """Convert domain QuantizationConfig or return existing BitsAndBytesConfig."""
@@ -161,4 +191,3 @@ class TransformerLlmModelLoader(ModelLoaderBase):
             return peft_model
         except Exception as exc:
             raise ModelLoadError(f"Failed to apply PEFT LoRA adapter: {exc}") from exc
-

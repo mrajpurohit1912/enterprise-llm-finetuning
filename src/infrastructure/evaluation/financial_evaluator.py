@@ -91,8 +91,9 @@ class FinancialEvaluator(EvaluatorBase):
         model.eval()
         device = next(model.parameters()).device
 
-        # Track GPU VRAM
+        # Clear unused VRAM before evaluation run
         if torch.cuda.is_available() and device.type == "cuda":
+            torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats(device)
 
         # Configure Tokenizer for Left-Padded Batch Generation
@@ -181,10 +182,8 @@ class FinancialEvaluator(EvaluatorBase):
                     ttft_estimate_ms = avg_sample_ms / max(1, newly_generated_tokens.shape[1])
                     ttft_measurements_ms.append(ttft_estimate_ms)
 
-                    # Explicitly release CUDA tensor memory before metric post-processing
+                    # Explicitly release Python tensor references before metric post-processing
                     del encoded, inputs, outputs, newly_generated_tokens
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
 
                     # Score each sample quantitatively and textually
                     for idx, prediction_str in enumerate(decoded_predictions):

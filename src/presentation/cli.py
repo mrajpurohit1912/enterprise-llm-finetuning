@@ -17,6 +17,7 @@ from src.application.usecases.submit_remote_job_usecase import SubmitRemoteJobUs
 from src.application.usecases.sync_remote_job_usecase import SyncRemoteJobUseCase
 from src.application.usecases.train_model_usecase import TrainModelUseCase
 from src.application.usecases.train_pipeline import TrainPipelineUsecase
+from src.application.usecases.merge_model_usecase import MergeModelUseCase
 from src.domain.exceptions import DomainError
 from src.domain.schemas.compute_schema import RemoteJobStatus
 from src.infrastructure.config.yaml_loader import YamlConfigLoader
@@ -27,7 +28,7 @@ from src.infrastructure.factories.trainer_factory import TrainerFactory
 from src.infrastructure.huggingface.huggingface_tokenizer import HuggingFaceTokenizer
 from src.infrastructure.logging import setup_logging
 from src.infrastructure.monitoring.callback_factory import MonitoringCallbackFactory
-
+from src.infrastructure.llm_model_loader.transformers_llm_model_loader import TransformerLlmModelLoader
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -60,6 +61,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip training and run standalone evaluation on the existing saved model artifacts",
     )
+    parser.add_argument(
+        "--merging-only",
+        action="store_true",
+        help="only for merging and saving the model",
+    )
+
     # Remote Cloud Compute Arguments
     parser.add_argument(
         "--remote-submit",
@@ -108,6 +115,7 @@ def main() -> None:
         # -------------------------------------------------------------
         if args.remote_submit or args.remote_status or args.remote_pull or args.remote_watch:
             provider = ComputeProviderFactory.get_provider(args.remote_provider)
+
 
             if args.remote_submit:
                 config_loader = YamlConfigLoader(config_path=config_path)
@@ -183,8 +191,20 @@ def main() -> None:
                 print("=======================================================\n")
                 return
 
+
         config_loader = YamlConfigLoader(config_path=config_path)
         config = config_loader.load_config()
+        
+        if args.merging_only:
+            llm_model_loader = TransformerLlmModelLoader()
+            tokenizer_loader = HuggingFaceTokenizer()
+            merge_model_usecase = MergeModelUseCase(
+                config=config,
+                model_loader=llm_model_loader,
+                tokenizer_loader=tokenizer_loader,
+            )
+            merge_model_usecase.merge_and_unload_model() 
+            return
 
         dataset_factory = DatasetLoaderFactory()
         tokenizer_loader = HuggingFaceTokenizer()
@@ -260,6 +280,10 @@ def main() -> None:
             gate = "PASSED" if result.evaluation.passed_quality_gate else "FAILED"
             print(f"Quality Gate      : {gate}")
         print("=======================================================\n")
+
+
+
+
     except DomainError as err:
         print(f"[Domain Error] {err}", file=sys.stderr)
         sys.exit(1)
