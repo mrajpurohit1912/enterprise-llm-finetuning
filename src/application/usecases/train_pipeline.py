@@ -157,7 +157,7 @@ class TrainPipelineUsecase:
 
 
             if self.config.artifact.save_merged_model and self.merging_model_usecase is not None:
-                self.merging_model_usecase.merge_and_unload_model()
+                self.merging_model_usecase.execute()
 
 
             return TrainPipelineResult(

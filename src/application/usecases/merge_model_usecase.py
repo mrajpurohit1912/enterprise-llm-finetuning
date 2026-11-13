@@ -32,7 +32,7 @@ class MergeModelUseCase:
         self.model_loader = model_loader
         self.tokenizer_loader = tokenizer_loader
 
-    def merge_and_unload_model(self) -> Path:
+    def execute(self) -> Path:
         """
         Merge trained LoRA adapter weights into base model and persist standalone artifacts.
 

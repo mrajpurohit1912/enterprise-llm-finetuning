@@ -1,36 +1,31 @@
 """
 src/presentation/cli.py
 Command-line presentation interface for triggering fine-tuning pipelines.
+Ultra-lean entrypoint delegating parsing, composition, and execution to modular components.
 """
 
 import argparse
-import logging
 import os
 import sys
-import time
-from datetime import datetime
+from collections.abc import Sequence
 from pathlib import Path
+
 from dotenv import load_dotenv
 
-from src.application.usecases.evaluate_model_usecase import EvaluateModelUseCase
-from src.application.usecases.submit_remote_job_usecase import SubmitRemoteJobUseCase
-from src.application.usecases.sync_remote_job_usecase import SyncRemoteJobUseCase
-from src.application.usecases.train_model_usecase import TrainModelUseCase
-from src.application.usecases.train_pipeline import TrainPipelineUsecase
-from src.application.usecases.merge_model_usecase import MergeModelUseCase
 from src.domain.exceptions import DomainError
-from src.domain.schemas.compute_schema import RemoteJobStatus
 from src.infrastructure.config.yaml_loader import YamlConfigLoader
-from src.infrastructure.factories.compute_factory import ComputeProviderFactory
-from src.infrastructure.factories.dataset_factory import DatasetLoaderFactory
-from src.infrastructure.factories.evaluator_factory import EvaluatorFactory
-from src.infrastructure.factories.trainer_factory import TrainerFactory
-from src.infrastructure.huggingface.huggingface_tokenizer import HuggingFaceTokenizer
 from src.infrastructure.logging import setup_logging
-from src.infrastructure.monitoring.callback_factory import MonitoringCallbackFactory
-from src.infrastructure.llm_model_loader.transformers_llm_model_loader import TransformerLlmModelLoader
+from src.presentation.handlers import (
+    handle_merge_action,
+    handle_pipeline_action,
+    handle_remote_action,
+    is_remote_action,
+)
+from src.presentation.presenter import ConsolePresenter
 
-def parse_args() -> argparse.Namespace:
+
+def parse_args(args: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse command-line arguments and flags."""
     parser = argparse.ArgumentParser(
         description="Enterprise LLM Fine-Tuning Pipeline CLI",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -100,206 +95,56 @@ def parse_args() -> argparse.Namespace:
         default="kaggle",
         help="Remote compute backend provider ('kaggle')",
     )
-    return parser.parse_args()
+    return parser.parse_args(args)
 
 
-def main() -> None:
+def run_cli(
+    argv: Sequence[str] | None = None,
+    presenter: ConsolePresenter | None = None,
+) -> int:
+    """
+    Main CLI controller executing argument parsing, dispatching, and error handling.
+    Returns exit code (0 for success, non-zero for errors).
+    """
+    presenter = presenter or ConsolePresenter()
     load_dotenv()
-    args = parse_args()
+    args = parse_args(argv)
     setup_logging(env=args.env, log_level=args.log_level)
     config_path = Path(args.config)
 
     try:
-        # -------------------------------------------------------------
-        # Remote Cloud Compute Actions
-        # -------------------------------------------------------------
-        if args.remote_submit or args.remote_status or args.remote_pull or args.remote_watch:
-            provider = ComputeProviderFactory.get_provider(args.remote_provider)
-
-
-            if args.remote_submit:
-                config_loader = YamlConfigLoader(config_path=config_path)
-                config = config_loader.load_config()
-                submit_usecase = SubmitRemoteJobUseCase(compute_provider=provider)
-                res = submit_usecase.execute(
-                    experiment_name=config.experiment.name,
-                    config_path=config_path,
-                )
-                print("\n=======================================================")
-                print("        REMOTE COMPUTE JOB SUBMISSION SUMMARY          ")
-                print("=======================================================")
-                print(f"Experiment Name   : {res.job_id}")
-                print(f"Compute Backend   : {provider.provider_name}")
-                print(f"Remote Job ID     : {res.remote_job_id}")
-                print(f"Status            : {res.status.value.upper()}")
-                print(f"Receipt Location  : outputs/.remote_jobs/{res.job_id}.json")
-                print("-------------------------------------------------------")
-                print("Run 'python -m src.main --remote-status' to check progress.")
-                print("Run 'python -m src.main --remote-watch' to stream and auto-download.")
-                print("=======================================================\n")
-                return
-
-            sync_usecase = SyncRemoteJobUseCase(compute_provider=provider)
-
-            if args.remote_status:
-                res = sync_usecase.execute(
-                    remote_job_id=args.remote_job_id,
-                    auto_download=False,
-                )
-                print("\n=======================================================")
-                print("             REMOTE COMPUTE STATUS SUMMARY             ")
-                print("=======================================================")
-                print(f"Remote Job ID     : {res.remote_job_id}")
-                print(f"Compute Backend   : {provider.provider_name}")
-                print(f"Status            : {res.status.value.upper()}")
-                print("=======================================================\n")
-                return
-
-            if args.remote_pull:
-                res = sync_usecase.execute(
-                    remote_job_id=args.remote_job_id,
-                    auto_download=True,
-                )
-                print("\n=======================================================")
-                print("            REMOTE ARTIFACT RETRIEVAL SUMMARY          ")
-                print("=======================================================")
-                print(f"Remote Job ID     : {res.remote_job_id}")
-                print(f"Status            : {res.status.value.upper()}")
-                print(f"Downloaded Path   : {res.artifact_path}")
-                print("=======================================================\n")
-                return
-
-            if args.remote_watch:
-                print("\n=======================================================")
-                print("            WATCHING REMOTE COMPUTE EXECUTION          ")
-                print("=======================================================")
-                while True:
-                    res = sync_usecase.execute(
-                        remote_job_id=args.remote_job_id,
-                        auto_download=True,
-                    )
-                    now_str = datetime.now().strftime("%H:%M:%S")
-                    print(f"[{now_str}] Job '{res.remote_job_id}' Status: {res.status.value.upper()}")
-                    if res.status in (RemoteJobStatus.COMPLETED, RemoteJobStatus.FAILED):
-                        break
-                    time.sleep(20)
-
-                if res.status == RemoteJobStatus.COMPLETED:
-                    print(f"\n✔ Job completed! Artifacts downloaded to: {res.artifact_path}")
-                else:
-                    print("\n✖ Job reported failure. Check remote Kaggle logs for details.")
-                print("=======================================================\n")
-                return
-
+        if is_remote_action(args):
+            return handle_remote_action(args, config_path, presenter=presenter)
 
         config_loader = YamlConfigLoader(config_path=config_path)
         config = config_loader.load_config()
-        
+
         if args.merging_only:
-            llm_model_loader = TransformerLlmModelLoader()
-            tokenizer_loader = HuggingFaceTokenizer()
-            merge_model_usecase = MergeModelUseCase(
-                config=config,
-                model_loader=llm_model_loader,
-                tokenizer_loader=tokenizer_loader,
-            )
-            merge_model_usecase.merge_and_unload_model() 
-            return
+            return handle_merge_action(config, presenter=presenter)
 
-        dataset_factory = DatasetLoaderFactory()
-        tokenizer_loader = HuggingFaceTokenizer()
-
-        # Composition Root: Resolve monitoring callbacks (Prometheus, W&B)
-        callbacks = MonitoringCallbackFactory.create_callbacks(
-            monitoring_config=config.monitoring,
-            experiment_name=config.experiment.name,
-            hyperparameters=config.training_args.model_dump(),
-        )
-
-        # Composition Root: Resolve trainer adapter and inject into atomic use case
-        trainer = TrainerFactory.get_trainer(config.training_args.trainer_type)
-        train_model_usecase = TrainModelUseCase(trainer=trainer)
-
-        # Composition Root: Resolve evaluator adapter and inject into atomic use case
-        evaluate_model_usecase = None
-        if config.evaluation is not None:
-            evaluator = EvaluatorFactory.get_evaluator(
-                evaluator_type=config.evaluation.evaluator_type,
-                dataset_name=config.dataset.dataset_name,
-            )
-            evaluate_model_usecase = EvaluateModelUseCase(evaluator=evaluator)
-
-
-        llm_model_loader = TransformerLlmModelLoader()
-        tokenizer_loader = HuggingFaceTokenizer()
-        merge_model_usecase = MergeModelUseCase(
-                config=config,
-                model_loader=llm_model_loader,
-                tokenizer_loader=tokenizer_loader,
-            )
-
-        pipeline = TrainPipelineUsecase(
+        return handle_pipeline_action(
+            config=config,
             config_loader=config_loader,
-            dataset_loader_factory=dataset_factory,
-            tokenizer_loader=tokenizer_loader,
-            train_model_usecase=train_model_usecase,
-            evaluate_model_usecase=evaluate_model_usecase,
-            merging_model_usecase=merge_model_usecase,
-            callbacks=callbacks,
+            eval_only=args.eval_only,
+            presenter=presenter,
         )
 
-        result = pipeline.run(eval_only=args.eval_only)
-
-        print("\n=======================================================")
-        print("          FINE-TUNING PIPELINE RUN SUMMARY             ")
-        print("=======================================================")
-        print(f"Experiment Name   : {result.experiment_name}")
-        print(f"Execution Status  : {result.status}")
-        print(f"Elapsed Time      : {result.duration_seconds}s")
-        print(f"Artifacts Output  : {result.output_dir}")
-        if result.train_loss is not None:
-            print(f"Final Train Loss  : {result.train_loss:.4f}")
-        if result.dataset_size:
-            print(f"Dataset Partitions: {result.dataset_size}")
-        if result.evaluation is not None:
-            print(f"Task Type         : {result.evaluation.task_type.value}")
-            print(f"Evaluation F1     : {result.evaluation.metrics.f1_score:.4f}")
-            print(f"Exact Match (EM)  : {result.evaluation.metrics.exact_match:.4f}")
-            print(f"ROUGE-L           : {result.evaluation.metrics.rouge_l or 0.0:.4f}")
-            if result.evaluation.metrics.tolerance_accuracy_5pct is not None:
-                print(f"Tolerance Acc (<=5%): {result.evaluation.metrics.tolerance_accuracy_5pct * 100:.2f}%")
-            if result.evaluation.metrics.tolerance_accuracy_1pct is not None:
-                print(f"Strict Acc (<=1%)  : {result.evaluation.metrics.tolerance_accuracy_1pct * 100:.2f}%")
-            if result.evaluation.metrics.sign_accuracy is not None:
-                print(f"Sign Accuracy     : {result.evaluation.metrics.sign_accuracy * 100:.2f}%")
-            if result.evaluation.metrics.parseable_number_rate is not None:
-                print(f"Parseable Rate    : {result.evaluation.metrics.parseable_number_rate * 100:.2f}%")
-            if result.evaluation.metrics.median_relative_error is not None:
-                print(f"Median Rel Error  : {result.evaluation.metrics.median_relative_error * 100:.2f}%")
-            if result.evaluation.delta_metrics:
-                delta_f1 = result.evaluation.delta_metrics.get("delta_f1_score", 0.0)
-                delta_em = result.evaluation.delta_metrics.get("delta_exact_match", 0.0)
-                print(f"Delta Uplift (ΔF1): {delta_f1:+.4f}")
-                print(f"Delta Uplift (ΔEM): {delta_em:+.4f}")
-            if result.evaluation.tpot_ms_p50 is not None:
-                print(f"TPOT (P50 Decode) : {result.evaluation.tpot_ms_p50:.2f} ms/token")
-            if result.evaluation.ttft_ms_p50 is not None:
-                print(f"TTFT (P50 Prefill): {result.evaluation.ttft_ms_p50:.2f} ms")
-            if result.evaluation.peak_memory_mb is not None:
-                print(f"Peak GPU VRAM     : {result.evaluation.peak_memory_mb:.2f} MB")
-            gate = "PASSED" if result.evaluation.passed_quality_gate else "FAILED"
-            print(f"Quality Gate      : {gate}")
-        print("=======================================================\n")
-
-
-
-
+    except KeyboardInterrupt:
+        presenter.render_error("Aborted", "Execution cancelled by user.")
+        return 130
     except DomainError as err:
-        print(f"[Domain Error] {err}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as exc:
-        print(f"[Fatal Error] Unexpected failure: {exc}", file=sys.stderr)
-        sys.exit(1)
+        presenter.render_error("Domain Error", str(err))
+        return 1
+    except Exception as exc:  # noqa: BLE001
+        presenter.render_error("Fatal Error", f"Unexpected failure: {exc}")
+        return 1
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    """Entry point wrapper invoked by console script and python -m."""
+    exit_code = run_cli(argv)
+    if exit_code != 0:
+        sys.exit(exit_code)
 
 
 if __name__ == "__main__":

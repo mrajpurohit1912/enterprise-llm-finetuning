@@ -53,7 +53,7 @@ class TestMergeModelUseCase(unittest.TestCase):
         )
 
         with patch("pathlib.Path.mkdir"):
-            export_path = usecase.merge_and_unload_model()
+            export_path = usecase.execute()
 
         self.mock_model_loader.load_base_model.assert_called_once_with(
             model_id="meta-llama/Llama-3.2-3B-Instruct",
@@ -77,7 +77,7 @@ class TestMergeModelUseCase(unittest.TestCase):
         )
 
         with self.assertRaises(ModelMergeError) as ctx:
-            usecase.merge_and_unload_model()
+            usecase.execute()
 
         self.assertIn("Failed to merge model", str(ctx.exception))
 
