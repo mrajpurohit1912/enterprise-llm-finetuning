@@ -13,7 +13,8 @@ from src.application.usecases.evaluate_model_usecase import EvaluateModelUseCase
 from src.application.usecases.load_dataset_usecase import LoadDatasetUseCase
 from src.application.usecases.preprocess_dataset_usecase import PreprocessDatasetUseCase
 from src.application.usecases.train_model_usecase import TrainModelUseCase
-from src.domain.exceptions import DomainError, PipelineExecutionError
+from src.application.usecases.merge_model_usecase import MergeModelUseCase
+from src.domain.exceptions import DomainError, ModelLoadError, PipelineExecutionError
 from src.domain.interfaces.config_loader import ConfigLoaderBase
 from src.domain.interfaces.model_loader import ModelLoaderBase
 from src.domain.interfaces.tokenizer import TokenizerBase
@@ -24,6 +25,7 @@ from src.infrastructure.huggingface.chat_template_formatter import ChatTemplateF
 from src.infrastructure.huggingface.huggingface_tokenizer import HuggingFaceTokenizer
 from src.infrastructure.llm_model_loader.transformers_llm_model_loader import TransformerLlmModelLoader
 from src.infrastructure.logging import clear_logging_context, set_logging_context
+from src.infrastructure.monitoring.wandb_tracker import WandbTracker
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,7 @@ class TrainPipelineUsecase:
         llm_model_loader: Optional[ModelLoaderBase] = None,
         train_model_usecase: Optional[TrainModelUseCase] = None,
         evaluate_model_usecase: Optional[EvaluateModelUseCase] = None,
+        merging_model_usecase: Optional[MergeModelUseCase] = None,
         callbacks: Optional[list] = None,
     ) -> None:
         self.config_loader = config_loader
@@ -51,6 +54,7 @@ class TrainPipelineUsecase:
         self.llm_model_loader = llm_model_loader or TransformerLlmModelLoader()
         self.train_model_usecase = train_model_usecase
         self.evaluate_model_usecase = evaluate_model_usecase
+        self.merging_model_usecase = merging_model_usecase
         self.callbacks = callbacks or []
         self.config: Optional[ExperimentConfig] = None
         self.llm_base_model: Any = None
@@ -124,29 +128,8 @@ class TrainPipelineUsecase:
                         model_id=self.config.llm_model.llm_model_id,
                         output_dir=str(self.config.artifact.output_dir),
                     )
-                    # Log evaluation scorecard to Weights & Biases if session active
-                    try:
-                        import wandb
-                        if wandb.run is not None:
-                            wandb_payload = {
-                                "eval/exact_match": eval_result.metrics.exact_match,
-                                "eval/f1_score": eval_result.metrics.f1_score,
-                                "eval/rouge_l": eval_result.metrics.rouge_l or 0.0,
-                                "eval/latency_per_sample_ms": eval_result.latency_per_sample_ms,
-                                "eval/throughput_tokens_per_sec": eval_result.throughput_tokens_per_sec,
-                            }
-                            if eval_result.ttft_ms_p50 is not None:
-                                wandb_payload["eval/ttft_ms_p50"] = eval_result.ttft_ms_p50
-                            if eval_result.tpot_ms_p50 is not None:
-                                wandb_payload["eval/tpot_ms_p50"] = eval_result.tpot_ms_p50
-                            if eval_result.peak_memory_mb is not None:
-                                wandb_payload["eval/peak_memory_mb"] = eval_result.peak_memory_mb
-                            if eval_result.delta_metrics:
-                                for metric_k, metric_v in eval_result.delta_metrics.items():
-                                    wandb_payload[f"eval/{metric_k}"] = metric_v
-                            wandb.log(wandb_payload)
-                    except Exception:
-                        pass
+                    # Log evaluation scorecard and sample breakdown table to Weights & Biases
+                    WandbTracker.log_evaluation_summary(eval_result)
                 else:
                     logger.warning("Evaluation split '%s' not found in processed dataset. Skipping evaluation.", eval_split_name)
 
@@ -171,6 +154,11 @@ class TrainPipelineUsecase:
                 if isinstance(train_output, dict):
                     train_loss = train_output.get("training_loss", train_output.get("train_loss"))
                     metrics = train_output
+
+
+            if self.config.artifact.save_merged_model and self.merging_model_usecase is not None:
+                self.merging_model_usecase.merge_and_unload_model()
+
 
             return TrainPipelineResult(
                 experiment_name=self.config.experiment.name,
@@ -199,6 +187,7 @@ class TrainPipelineUsecase:
             raise PipelineExecutionError(f"Pipeline execution failed: {exc}") from exc
         finally:
             clear_logging_context()
+            WandbTracker.finish()
 
     def _prepare_data(self, config: ExperimentConfig) -> Tuple[Any, Any]:
         """
@@ -282,14 +271,52 @@ class TrainPipelineUsecase:
 
         if adapter_path:
             p = Path(adapter_path)
-            if (p / "adapter_model.safetensors").exists() or (p / "adapter_model.bin").exists():
-                try:
-                    from peft import PeftModel
-                    logger.info("Loading existing trained LoRA adapter from '%s'...", adapter_path)
-                    self.peft_model = PeftModel.from_pretrained(self.llm_base_model, str(adapter_path))
-                    return self.peft_model
-                except Exception as exc:
-                    logger.warning("Failed to load adapter from '%s': %s. Re-initializing new adapter.", adapter_path, exc)
+            candidate_dirs = [p, p / p.name]
+
+            # Heuristic 1: If experiment name had suffixes (e.g. '-evaluation', '_eval'), check base experiment directory
+            cleaned_name = p.name.replace("-evaluation", "").replace("_evaluation", "").replace("-eval", "")
+            if cleaned_name != p.name and p.parent.exists():
+                fallback_dir = p.parent / cleaned_name
+                candidate_dirs.extend([fallback_dir, fallback_dir / cleaned_name])
+                if fallback_dir.exists():
+                    candidate_dirs.extend([f.parent for f in fallback_dir.glob("**/adapter_model.safetensors")])
+                    candidate_dirs.extend([f.parent for f in fallback_dir.glob("**/adapter_model.bin")])
+
+            # Also search any nested directories (e.g. from Kaggle unzipped outputs)
+            if p.exists():
+                candidate_dirs.extend([f.parent for f in p.glob("**/adapter_model.safetensors")])
+                candidate_dirs.extend([f.parent for f in p.glob("**/adapter_model.bin")])
+
+            # Heuristic 2: Check outputs/ root for any adapter matching the experiment prefix
+            outputs_root = p.parent if p.parent.exists() else Path("outputs")
+            if outputs_root.exists():
+                candidate_dirs.extend([
+                    f.parent for f in outputs_root.glob("**/adapter_model.safetensors")
+                    if "checkpoint-" not in f.parent.name
+                ])
+
+            seen_dirs = set()
+            for candidate in candidate_dirs:
+                cand_str = str(candidate.resolve()) if candidate.exists() else str(candidate)
+                if cand_str in seen_dirs:
+                    continue
+                seen_dirs.add(cand_str)
+
+                if (candidate / "adapter_model.safetensors").exists() or (candidate / "adapter_model.bin").exists():
+                    try:
+                        from peft import PeftModel
+                        logger.info("Loading existing trained LoRA adapter from '%s'...", candidate)
+                        self.peft_model = PeftModel.from_pretrained(self.llm_base_model, str(candidate))
+                        return self.peft_model
+                    except Exception as exc:
+                        logger.warning("Failed to load adapter from '%s': %s.", candidate, exc)
+
+            # Defensive failure boundary: in eval-only mode, never evaluate an untrained empty adapter
+            raise ModelLoadError(
+                f"No trained LoRA adapter found in '{adapter_path}' or any discovered candidate directories. "
+                f"In eval-only mode, a valid trained adapter checkpoint (adapter_model.safetensors) is required. "
+                f"Please ensure your experiment name matches the trained checkpoint or outputs directory."
+            )
 
         if config.peft:
             logger.info("Attaching LoRA adapters (r=%d, alpha=%d)...", config.peft.r, config.peft.lora_alpha)

@@ -85,7 +85,8 @@ class TrlTrainer(TrainerBase):
             optim=training_args.optim,                                                                                                                                                                 
             save_strategy=training_args.save_strategy,                                                                                                                                                 
             save_steps=training_args.save_steps,                                                                                                                                                       
-            report_to=training_args.report_to,                                                                                                                                                         
+            report_to=training_args.report_to,
+            ddp_find_unused_parameters=False,
             # --- ADD DISTRIBUTED ARGS HERE ---                                                                                                                                                        
             fsdp=fsdp_strategy,                                                                                                                                                                        
             fsdp_config=fsdp_config_dict,                                                                                                                                                              
@@ -112,18 +113,26 @@ class TrlTrainer(TrainerBase):
             **kwargs,
         )
 
+        # Counteract TRL's unconditional bfloat16 cast for quantized models when training in FP16.
+        # Under PyTorch AMP (fp16: true), optimizer master weights must be float32 so that
+        # autograd accumulates float32 gradients that GradScaler can unscale natively.
+        if training_args.fp16:
+            logger.info(
+                "Aligning trainable adapter parameters to float32 to counteract TRL SFTTrainer automatic bfloat16 cast for FP16 execution..."
+            )
+            import torch
+            for param in trainer.model.parameters():
+                if param.requires_grad:
+                    param.data = param.data.to(torch.float32)
+
         # 4. Train model
         logger.info("Starting model training with TRL SFTTrainer (max_steps=%d)...", training_args.max_steps)
-        try:
-            train_result = trainer.train()
+        train_result = trainer.train()
 
-            # 5. Persist fine-tuned weights and tokenizer
-            logger.info("Saving fine-tuned model and artifacts to '%s'...", save_path)
-            trainer.save_model(save_path)
-            if tokenizer is not None:
-                tokenizer.save_pretrained(save_path)
+        # 5. Persist fine-tuned weights and tokenizer
+        logger.info("Saving fine-tuned model and artifacts to '%s'...", save_path)
+        trainer.save_model(save_path)
+        if tokenizer is not None:
+            tokenizer.save_pretrained(save_path)
 
-            return train_result
-        finally:
-            from src.infrastructure.monitoring.wandb_tracker import WandbTracker
-            WandbTracker.finish()
+        return train_result

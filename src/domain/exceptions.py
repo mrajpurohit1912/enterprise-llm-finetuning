@@ -43,3 +43,13 @@ class ModelEvaluationError(DomainError):
     """Raised when model evaluation, generation, or metric scoring fails."""
     pass
 
+
+class RemoteComputeError(DomainError):
+    """Raised when remote compute job submission, polling, or artifact retrieval fails."""
+    pass
+
+
+class ModelMergeError(DomainError):
+    """Raised when merging models fails."""
+    pass
+

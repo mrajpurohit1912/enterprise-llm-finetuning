@@ -90,6 +90,18 @@ class TestEvaluatorFactory(unittest.TestCase):
         self.assertIsInstance(evaluator1, DeterministicEvaluator)
         self.assertIsInstance(evaluator2, DeterministicEvaluator)
 
+    def test_get_financial_evaluator_and_auto_resolution(self) -> None:
+        eval_fin = EvaluatorFactory.get_evaluator("financial")
+        eval_finqa = EvaluatorFactory.get_evaluator("finqa")
+        eval_auto_fin = EvaluatorFactory.get_evaluator("auto", dataset_name="ChanceFocus/flare-finqa")
+        eval_auto_def = EvaluatorFactory.get_evaluator("auto", dataset_name="generic-qa-dataset")
+
+        from src.infrastructure.evaluation.financial_evaluator import FinancialEvaluator
+        self.assertIsInstance(eval_fin, FinancialEvaluator)
+        self.assertIsInstance(eval_finqa, FinancialEvaluator)
+        self.assertIsInstance(eval_auto_fin, FinancialEvaluator)
+        self.assertIsInstance(eval_auto_def, DeterministicEvaluator)
+
     def test_unsupported_evaluator_raises_error(self) -> None:
         with self.assertRaises(ConfigurationError):
             EvaluatorFactory.get_evaluator("unknown_evaluator_strategy")

@@ -7,21 +7,28 @@ import argparse
 import logging
 import os
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
 from src.application.usecases.evaluate_model_usecase import EvaluateModelUseCase
+from src.application.usecases.submit_remote_job_usecase import SubmitRemoteJobUseCase
+from src.application.usecases.sync_remote_job_usecase import SyncRemoteJobUseCase
 from src.application.usecases.train_model_usecase import TrainModelUseCase
 from src.application.usecases.train_pipeline import TrainPipelineUsecase
+from src.application.usecases.merge_model_usecase import MergeModelUseCase
 from src.domain.exceptions import DomainError
+from src.domain.schemas.compute_schema import RemoteJobStatus
 from src.infrastructure.config.yaml_loader import YamlConfigLoader
+from src.infrastructure.factories.compute_factory import ComputeProviderFactory
 from src.infrastructure.factories.dataset_factory import DatasetLoaderFactory
 from src.infrastructure.factories.evaluator_factory import EvaluatorFactory
 from src.infrastructure.factories.trainer_factory import TrainerFactory
 from src.infrastructure.huggingface.huggingface_tokenizer import HuggingFaceTokenizer
 from src.infrastructure.logging import setup_logging
 from src.infrastructure.monitoring.callback_factory import MonitoringCallbackFactory
-
+from src.infrastructure.llm_model_loader.transformers_llm_model_loader import TransformerLlmModelLoader
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -54,6 +61,45 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip training and run standalone evaluation on the existing saved model artifacts",
     )
+    parser.add_argument(
+        "--merging-only",
+        action="store_true",
+        help="only for merging and saving the model",
+    )
+
+    # Remote Cloud Compute Arguments
+    parser.add_argument(
+        "--remote-submit",
+        action="store_true",
+        help="Package and dispatch training pipeline to remote cloud GPU (Kaggle Dual-T4)",
+    )
+    parser.add_argument(
+        "--remote-status",
+        action="store_true",
+        help="Check the status of a remote compute job",
+    )
+    parser.add_argument(
+        "--remote-pull",
+        action="store_true",
+        help="Download artifacts from a completed remote compute job",
+    )
+    parser.add_argument(
+        "--remote-watch",
+        action="store_true",
+        help="Poll and stream remote job status until completion, then download output artifacts",
+    )
+    parser.add_argument(
+        "--remote-job-id",
+        type=str,
+        default=None,
+        help="Specific remote job ID (e.g. 'username/kernel-slug'). Defaults to latest job.",
+    )
+    parser.add_argument(
+        "--remote-provider",
+        type=str,
+        default="kaggle",
+        help="Remote compute backend provider ('kaggle')",
+    )
     return parser.parse_args()
 
 
@@ -64,8 +110,101 @@ def main() -> None:
     config_path = Path(args.config)
 
     try:
+        # -------------------------------------------------------------
+        # Remote Cloud Compute Actions
+        # -------------------------------------------------------------
+        if args.remote_submit or args.remote_status or args.remote_pull or args.remote_watch:
+            provider = ComputeProviderFactory.get_provider(args.remote_provider)
+
+
+            if args.remote_submit:
+                config_loader = YamlConfigLoader(config_path=config_path)
+                config = config_loader.load_config()
+                submit_usecase = SubmitRemoteJobUseCase(compute_provider=provider)
+                res = submit_usecase.execute(
+                    experiment_name=config.experiment.name,
+                    config_path=config_path,
+                )
+                print("\n=======================================================")
+                print("        REMOTE COMPUTE JOB SUBMISSION SUMMARY          ")
+                print("=======================================================")
+                print(f"Experiment Name   : {res.job_id}")
+                print(f"Compute Backend   : {provider.provider_name}")
+                print(f"Remote Job ID     : {res.remote_job_id}")
+                print(f"Status            : {res.status.value.upper()}")
+                print(f"Receipt Location  : outputs/.remote_jobs/{res.job_id}.json")
+                print("-------------------------------------------------------")
+                print("Run 'python -m src.main --remote-status' to check progress.")
+                print("Run 'python -m src.main --remote-watch' to stream and auto-download.")
+                print("=======================================================\n")
+                return
+
+            sync_usecase = SyncRemoteJobUseCase(compute_provider=provider)
+
+            if args.remote_status:
+                res = sync_usecase.execute(
+                    remote_job_id=args.remote_job_id,
+                    auto_download=False,
+                )
+                print("\n=======================================================")
+                print("             REMOTE COMPUTE STATUS SUMMARY             ")
+                print("=======================================================")
+                print(f"Remote Job ID     : {res.remote_job_id}")
+                print(f"Compute Backend   : {provider.provider_name}")
+                print(f"Status            : {res.status.value.upper()}")
+                print("=======================================================\n")
+                return
+
+            if args.remote_pull:
+                res = sync_usecase.execute(
+                    remote_job_id=args.remote_job_id,
+                    auto_download=True,
+                )
+                print("\n=======================================================")
+                print("            REMOTE ARTIFACT RETRIEVAL SUMMARY          ")
+                print("=======================================================")
+                print(f"Remote Job ID     : {res.remote_job_id}")
+                print(f"Status            : {res.status.value.upper()}")
+                print(f"Downloaded Path   : {res.artifact_path}")
+                print("=======================================================\n")
+                return
+
+            if args.remote_watch:
+                print("\n=======================================================")
+                print("            WATCHING REMOTE COMPUTE EXECUTION          ")
+                print("=======================================================")
+                while True:
+                    res = sync_usecase.execute(
+                        remote_job_id=args.remote_job_id,
+                        auto_download=True,
+                    )
+                    now_str = datetime.now().strftime("%H:%M:%S")
+                    print(f"[{now_str}] Job '{res.remote_job_id}' Status: {res.status.value.upper()}")
+                    if res.status in (RemoteJobStatus.COMPLETED, RemoteJobStatus.FAILED):
+                        break
+                    time.sleep(20)
+
+                if res.status == RemoteJobStatus.COMPLETED:
+                    print(f"\n✔ Job completed! Artifacts downloaded to: {res.artifact_path}")
+                else:
+                    print("\n✖ Job reported failure. Check remote Kaggle logs for details.")
+                print("=======================================================\n")
+                return
+
+
         config_loader = YamlConfigLoader(config_path=config_path)
         config = config_loader.load_config()
+        
+        if args.merging_only:
+            llm_model_loader = TransformerLlmModelLoader()
+            tokenizer_loader = HuggingFaceTokenizer()
+            merge_model_usecase = MergeModelUseCase(
+                config=config,
+                model_loader=llm_model_loader,
+                tokenizer_loader=tokenizer_loader,
+            )
+            merge_model_usecase.merge_and_unload_model() 
+            return
 
         dataset_factory = DatasetLoaderFactory()
         tokenizer_loader = HuggingFaceTokenizer()
@@ -84,8 +223,20 @@ def main() -> None:
         # Composition Root: Resolve evaluator adapter and inject into atomic use case
         evaluate_model_usecase = None
         if config.evaluation is not None:
-            evaluator = EvaluatorFactory.get_evaluator(config.evaluation.evaluator_type)
+            evaluator = EvaluatorFactory.get_evaluator(
+                evaluator_type=config.evaluation.evaluator_type,
+                dataset_name=config.dataset.dataset_name,
+            )
             evaluate_model_usecase = EvaluateModelUseCase(evaluator=evaluator)
+
+
+        llm_model_loader = TransformerLlmModelLoader()
+        tokenizer_loader = HuggingFaceTokenizer()
+        merge_model_usecase = MergeModelUseCase(
+                config=config,
+                model_loader=llm_model_loader,
+                tokenizer_loader=tokenizer_loader,
+            )
 
         pipeline = TrainPipelineUsecase(
             config_loader=config_loader,
@@ -93,6 +244,7 @@ def main() -> None:
             tokenizer_loader=tokenizer_loader,
             train_model_usecase=train_model_usecase,
             evaluate_model_usecase=evaluate_model_usecase,
+            merging_model_usecase=merge_model_usecase,
             callbacks=callbacks,
         )
 
@@ -114,6 +266,16 @@ def main() -> None:
             print(f"Evaluation F1     : {result.evaluation.metrics.f1_score:.4f}")
             print(f"Exact Match (EM)  : {result.evaluation.metrics.exact_match:.4f}")
             print(f"ROUGE-L           : {result.evaluation.metrics.rouge_l or 0.0:.4f}")
+            if result.evaluation.metrics.tolerance_accuracy_5pct is not None:
+                print(f"Tolerance Acc (<=5%): {result.evaluation.metrics.tolerance_accuracy_5pct * 100:.2f}%")
+            if result.evaluation.metrics.tolerance_accuracy_1pct is not None:
+                print(f"Strict Acc (<=1%)  : {result.evaluation.metrics.tolerance_accuracy_1pct * 100:.2f}%")
+            if result.evaluation.metrics.sign_accuracy is not None:
+                print(f"Sign Accuracy     : {result.evaluation.metrics.sign_accuracy * 100:.2f}%")
+            if result.evaluation.metrics.parseable_number_rate is not None:
+                print(f"Parseable Rate    : {result.evaluation.metrics.parseable_number_rate * 100:.2f}%")
+            if result.evaluation.metrics.median_relative_error is not None:
+                print(f"Median Rel Error  : {result.evaluation.metrics.median_relative_error * 100:.2f}%")
             if result.evaluation.delta_metrics:
                 delta_f1 = result.evaluation.delta_metrics.get("delta_f1_score", 0.0)
                 delta_em = result.evaluation.delta_metrics.get("delta_exact_match", 0.0)
@@ -128,6 +290,10 @@ def main() -> None:
             gate = "PASSED" if result.evaluation.passed_quality_gate else "FAILED"
             print(f"Quality Gate      : {gate}")
         print("=======================================================\n")
+
+
+
+
     except DomainError as err:
         print(f"[Domain Error] {err}", file=sys.stderr)
         sys.exit(1)

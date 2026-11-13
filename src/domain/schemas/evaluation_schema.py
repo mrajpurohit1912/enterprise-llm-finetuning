@@ -60,7 +60,43 @@ class MetricScores(BaseModel):
     recall: Optional[float] = Field(default=None,ge=0.0,le=1.0)
 
     # Structured Output / JSON Schema Metrics
-    schema_validity_rate: Optional[float] = Field(default=None, ge=0.0, le=1.0)  
+    schema_validity_rate: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+    # Domain-Specific Quantitative / Financial Metrics
+    tolerance_accuracy_5pct: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Percentage of predictions within 5% relative error of ground truth",
+    )
+    tolerance_accuracy_1pct: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Percentage of predictions within strict 1% relative error",
+    )
+    sign_accuracy: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Directional financial correctness rate (matching positive/negative sign)",
+    )
+    parseable_number_rate: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Percentage of generated completions successfully parsed as numbers",
+    )
+    median_relative_error: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Median relative error across valid numerical predictions",
+    )
+    mean_absolute_percentage_error: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Mean absolute percentage error (MAPE)",
+    )
 
     custom_metrics: Dict[str, float] = Field(                               
             default_factory=dict,                                          
@@ -75,6 +111,10 @@ class EvaluationSample(BaseModel):
     prediction: str = Field(..., description="Model generated response")
     exact_match: bool = Field(..., description="Whether prediction matches reference exactly")
     f1_score: float = Field(..., description="Token-level F1 score for this sample")
+    parsed_ground_truth: Optional[float] = Field(default=None, description="Normalized numeric ground truth")
+    parsed_prediction: Optional[float] = Field(default=None, description="Normalized numeric prediction")
+    relative_error: Optional[float] = Field(default=None, description="Relative error (|pred - gt| / |gt|)")
+    within_tolerance: Optional[bool] = Field(default=None, description="Whether prediction fell within tolerance threshold")
 
 class EvaluationConfig(BaseModel):                                                                                                                                                    
     task_type: TaskType = Field(default=TaskType.TEXT_GENERATION)
@@ -95,6 +135,8 @@ class EvaluationConfig(BaseModel):
     # Quality Gate Thresholds
     min_f1_threshold: Optional[float] = Field(default=0.50)
     min_exact_match_threshold: Optional[float] = Field(default=None)
+    numerical_tolerance: float = Field(default=0.05, ge=0.0, le=1.0, description="Relative error tolerance (default 5%)")
+    min_tolerance_accuracy_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Quality gate threshold for tolerance accuracy")
     fail_on_quality_gate_breach: bool = Field(default=False)
 
 

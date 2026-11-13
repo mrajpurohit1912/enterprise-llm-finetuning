@@ -53,6 +53,11 @@ A comprehensive, industry-grade reference guide covering LLM architectures, hard
    * [7.6 Enterprise Safety, Alignment & Red-Teaming Audits](#76-enterprise-safety-alignment--red-teaming-audits)
    * [7.7 Production Serving Latency & Throughput Telemetry](#77-production-serving-latency--throughput-telemetry)
    * [7.8 Financial & Unit Economics: Cost per Request & Token Modeling](#78-financial--unit-economics-cost-per-request--token-modeling)
+8. [Enterprise Remote Cloud Compute & Headless GPU Orchestration](#8-enterprise-remote-cloud-compute--headless-gpu-orchestration)
+   * [8.1 Headless GPU Execution vs. Interactive Notebooks vs. SSH Tunnels](#81-headless-gpu-execution-vs-interactive-notebooks-vs-ssh-tunnels)
+   * [8.2 Clean Architecture Compute Port (`IComputeProvider`)](#82-clean-architecture-compute-port-icomputeprovider)
+   * [8.3 The Kaggle API Batch Lifecycle (Package, Push, Poll, Pull)](#83-the-kaggle-api-batch-lifecycle-package-push-poll-pull)
+   * [8.4 Receipt Management & CLI Automation Workflow](#84-receipt-management--cli-automation-workflow)
 
 ---
 
@@ -814,3 +819,134 @@ $$\mathbf{\text{Cost per Million Tokens}_{\text{self-hosted}} = \frac{\text{Hour
 * **Break-Even Analysis**:
   * Self-hosting on dedicated instances (e.g., $1 \times \text{H100}$ @ $\$2.50$/hr yielding $150\text{ tokens/sec} \approx 540{,}000\text{ tokens/hr}$) achieves production cost parity with commercial frontier APIs at sustained utilization rates above **30%–45%**.
   * Below this utilization threshold, serverless inference APIs or dynamic autoscaling (Ray Serve, KServe) minimize idle compute expenditure.
+
+---
+
+## 8. Enterprise Remote Cloud Compute & Headless GPU Orchestration
+
+Production fine-tuning workflows require decoupling local development (code editing, architectural design, testing) from compute-intensive execution (multi-hour QLoRA training and LLM generation). 
+
+### 8.1 Headless GPU Execution vs. Interactive Notebooks vs. SSH Tunnels
+
+| Paradigm | Execution Model | Reliability & Disconnection | CI/CD & CLI Automation | Ephemeral Artifact Retrieval |
+| :--- | :--- | :--- | :--- | :--- |
+| **Interactive Web Notebooks** (Colab / Kaggle UI) | Browser session with active WebSocket tab | **Fragile**: Tab closure or sleep disconnects runtime. | **Zero**: Requires manual click-to-run in UI. | Manual browser file download. |
+| **Reverse SSH Tunnels** (ngrok / colab-ssh) | Reverse tunnel forwarding SSH port | **Moderate**: Tunnel dropped upon IP rotation or proxy timeout. | **Moderate**: Requires running background daemon on client. | Manual `scp` / `rsync`. |
+| **Headless Batch Orchestration** (Official Cloud API) | Asynchronous headless kernel execution via REST/CLI | **Unbreakable**: Execution runs completely detached on cloud cluster. | **100% Native**: CLI commands (`--remote-submit`, `--remote-status`, `--remote-watch`). | Automated programmatic pull (`outputs/`). |
+
+---
+
+### 8.2 Clean Architecture Compute Port (`IComputeProvider`)
+
+In accordance with Hexagonal Architecture and Clean Architecture, remote GPU execution is abstracted as a domain port interface:
+
+```
+[ Presentation (CLI) ]
+        │
+        ▼
+[ Application Use Cases ] ────► SubmitRemoteJobUseCase / SyncRemoteJobUseCase
+        │
+        ▼ (Port)
+[ Domain Interface ] ─────────► IComputeProvider (submit_job, get_status, download_artifact)
+        │
+        ▼ (Adapter)
+[ Infrastructure Layer ] ─────► KaggleComputeProvider
+                                   ├── KaggleApiClient (CLI wrapper)
+                                   └── KaggleKernelBuilder (worker.py + metadata.json)
+```
+
+#### Domain Interface Specification
+```python
+class IComputeProvider(ABC):
+    @property
+    @abstractmethod
+    def provider_name(self) -> str:
+        """Unique backend provider identifier (e.g. 'kaggle_dual_t4')."""
+        pass
+
+    @abstractmethod
+    def submit_job(self, experiment_name: str, config_path: Path) -> str:
+        """Packages worker script, pushes to cloud GPU, and returns remote job ID."""
+        pass
+
+    @abstractmethod
+    def get_status(self, remote_job_id: str) -> RemoteJobStatus:
+        """Polls current status: QUEUED, RUNNING, COMPLETED, or FAILED."""
+        pass
+
+    @abstractmethod
+    def download_artifact(self, remote_job_id: str, destination_path: Path) -> None:
+        """Downloads completed artifacts (weights, reports, checkpoints)."""
+        pass
+```
+
+---
+
+### 8.3 The Kaggle API Batch Lifecycle (Package, Push, Poll, Pull)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Developer / CLI
+    participant Builder as KaggleKernelBuilder
+    participant Client as KaggleApiClient
+    participant Cloud as Kaggle Cloud (Dual T4)
+    participant Local as Local Outputs
+
+    Dev->>Builder: build_package(experiment_name, config_path)
+    Note over Builder: 1. Sanitizes slug (a-z, 0-9, hyphens)<br/>2. Bundles local YAML config<br/>3. Writes kernel-metadata.json<br/>4. Generates worker.py
+    Builder-->>Dev: output_package/
+    Dev->>Client: push_kernel(output_package)
+    Client->>Cloud: kaggle kernels push -p output_package
+    Cloud-->>Client: remote_job_id ("username/slug")
+    Dev->>Dev: Persist tracking receipt (.remote_jobs/latest.json)
+
+    loop Polling Status (--remote-watch)
+        Dev->>Client: get_status(remote_job_id)
+        Client->>Cloud: kaggle kernels status remote_job_id
+        Cloud-->>Client: "queued" -> "running" -> "complete"
+    end
+
+    alt Status == COMPLETED
+        Dev->>Client: download_output(remote_job_id, destination)
+        Client->>Cloud: kaggle kernels output remote_job_id -p outputs/
+        Cloud-->>Local: LoRA checkpoints & evaluation_report.md
+        Dev->>Dev: Update receipt (status="completed")
+    end
+```
+
+#### Kernel Bundling & Configuration Isolation
+When dispatching jobs to remote git-cloned environments, uncommitted local changes to `src/finetuning_config.yaml` are lost if the cloud worker relies solely on `git clone`. 
+`KaggleKernelBuilder` solves this by **bundling the active local YAML directly into the package payload**:
+1. It copies the local `finetuning_config.yaml` into the staging directory.
+2. The generated `worker.py` deploys this bundled file over the cloned repository before launching `python -m src.main`.
+3. Hyperparameter tweaks are executed immediately without requiring a `git commit` or `git push`.
+
+---
+
+### 8.4 Receipt Management & CLI Automation Workflow
+
+To prevent requiring the developer to remember long Kaggle kernel slugs, execution state is recorded in local receipts under `outputs/.remote_jobs/`:
+
+```
+outputs/
+└── .remote_jobs/
+    ├── gemma-3-1b_flare-finqa_qlora-r16_20261002_155950.json
+    └── latest.json  <-- Symlinked or overwritten latest submission
+```
+
+#### CLI Operational Commands
+```bash
+# 1. Package and submit current experiment directly to Kaggle Cloud Dual T4 GPUs
+python -m src.main --remote-submit
+
+# 2. Check current execution status of latest submitted job
+python -m src.main --remote-status
+
+# 3. Stream status and auto-download output checkpoints upon completion
+python -m src.main --remote-watch
+
+# 4. Pull artifacts explicitly for a specific prior job
+python -m src.main --remote-pull --remote-job-id <username>/<kernel-slug>
+```
+
