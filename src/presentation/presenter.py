@@ -84,6 +84,8 @@ class ConsolePresenter:
         print(f"Execution Status  : {result.status}")
         print(f"Elapsed Time      : {result.duration_seconds}s")
         print(f"Artifacts Output  : {result.output_dir}")
+        if result.registered_model_uri:
+            print(f"Registered Model  : {result.registered_model_uri}")
         if result.train_loss is not None:
             print(f"Final Train Loss  : {result.train_loss:.4f}")
         if result.dataset_size:

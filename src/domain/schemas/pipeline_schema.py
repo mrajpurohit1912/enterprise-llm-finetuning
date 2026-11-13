@@ -23,3 +23,4 @@ class TrainPipelineResult:
     model: Optional[Any] = field(default=None, repr=False)
     tokenizer: Optional[Any] = field(default=None, repr=False)
     evaluation: Optional[Any] = None
+    registered_model_uri: Optional[str] = None

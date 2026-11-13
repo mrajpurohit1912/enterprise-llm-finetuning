@@ -5,13 +5,16 @@ Unit tests for application use cases (LoadDatasetUseCase, PreprocessDatasetUseCa
 
 import unittest
 from unittest.mock import MagicMock
+
 from datasets import Dataset, DatasetDict
 
-from src.application.services.dataset_processor import DatasetProcessor
 from src.application.usecases.load_dataset_usecase import LoadDatasetUseCase
 from src.application.usecases.preprocess_dataset_usecase import PreprocessDatasetUseCase
 from src.application.usecases.train_pipeline import TrainPipelineUsecase
-from src.domain.exceptions import DatasetIngestionError, PreprocessingError, PipelineExecutionError
+from src.domain.exceptions import (
+    DatasetIngestionError,
+    PipelineExecutionError,
+)
 from src.domain.schemas.config_schema import (
     DatasetConfig,
     DatasetSourceType,
@@ -26,9 +29,16 @@ class TestUseCases(unittest.TestCase):
     """Tests application orchestration use cases in isolation using mocks."""
 
     def setUp(self) -> None:
-        self.mock_dataset = DatasetDict({
-            "train": Dataset.from_dict({"question": ["What is PEFT?"], "answer": ["Parameter-Efficient Fine-Tuning."]}),
-        })
+        self.mock_dataset = DatasetDict(
+            {
+                "train": Dataset.from_dict(
+                    {
+                        "question": ["What is PEFT?"],
+                        "answer": ["Parameter-Efficient Fine-Tuning."],
+                    }
+                ),
+            }
+        )
 
     def test_load_dataset_usecase_success(self) -> None:
         """LoadDatasetUseCase should delegate to loader and return dataset."""
@@ -36,10 +46,14 @@ class TestUseCases(unittest.TestCase):
         mock_loader.load_data.return_value = self.mock_dataset
 
         usecase = LoadDatasetUseCase(loader=mock_loader)
-        config = DatasetConfig(source=DatasetSourceType.HUGGINGFACE, dataset_name="databricks/officeqa")
+        config = DatasetConfig(
+            source=DatasetSourceType.HUGGINGFACE, dataset_name="databricks/officeqa"
+        )
         result = usecase.execute(config)
 
-        mock_loader.load_data.assert_called_once_with(dataset_name="databricks/officeqa", subset_name=None)
+        mock_loader.load_data.assert_called_once_with(
+            dataset_name="databricks/officeqa", subset_name=None
+        )
         self.assertEqual(result, self.mock_dataset)
 
     def test_load_dataset_usecase_null_loader_raises(self) -> None:
@@ -66,8 +80,12 @@ class TestUseCases(unittest.TestCase):
         """TrainPipelineUsecase should orchestrate config, data loading, tokenizing, and preprocessing."""
         real_config = ExperimentConfig(
             experiment=ExperimentInfo(name="test-pipeline"),
-            dataset=DatasetConfig(source=DatasetSourceType.HUGGINGFACE, dataset_name="test/dataset"),
-            llm_model=LLMModelConfig(llm_model_id="test/model", trust_remote_code=False),
+            dataset=DatasetConfig(
+                source=DatasetSourceType.HUGGINGFACE, dataset_name="test/dataset"
+            ),
+            llm_model=LLMModelConfig(
+                llm_model_id="test/model", trust_remote_code=False
+            ),
         )
 
         mock_config_loader = MagicMock()
@@ -110,7 +128,9 @@ class TestUseCases(unittest.TestCase):
 
         mock_config_loader.load_config.assert_called_once()
         mock_factory.get_loader.assert_called_once_with(DatasetSourceType.HUGGINGFACE)
-        mock_data_loader.load_data.assert_called_once_with(dataset_name="test/dataset", subset_name=None)
+        mock_data_loader.load_data.assert_called_once_with(
+            dataset_name="test/dataset", subset_name=None
+        )
         mock_tokenizer_loader.get_tokenizer.assert_called_once_with(
             model_name="test/model", trust_remote_code=False
         )
@@ -131,13 +151,70 @@ class TestUseCases(unittest.TestCase):
         self.assertEqual(result.train_loss, 0.35)
         self.assertGreaterEqual(result.duration_seconds, 0.0)
 
-    def test_train_pipeline_usecase_failure_raises_pipeline_execution_error(self) -> None:
+    def test_train_pipeline_usecase_failure_raises_pipeline_execution_error(
+        self,
+    ) -> None:
         mock_config_loader = MagicMock()
-        mock_config_loader.load_config.side_effect = RuntimeError("Unexpected disk error")
+        mock_config_loader.load_config.side_effect = RuntimeError(
+            "Unexpected disk error"
+        )
 
         pipeline = TrainPipelineUsecase(config_loader=mock_config_loader)
         with self.assertRaises(PipelineExecutionError):
             pipeline.run()
+
+    def test_train_pipeline_with_auto_registration(self) -> None:
+        """When auto_register=True, TrainPipelineUsecase delegates to injected register_model_usecase."""
+        real_config = ExperimentConfig(
+            experiment=ExperimentInfo(name="test-pipeline"),
+            dataset=DatasetConfig(
+                source=DatasetSourceType.HUGGINGFACE, dataset_name="test/dataset"
+            ),
+            llm_model=LLMModelConfig(
+                llm_model_id="test/model", trust_remote_code=False
+            ),
+        )
+
+        mock_config_loader = MagicMock()
+        mock_config_loader.load_config.return_value = real_config
+
+        mock_data_loader = MagicMock()
+        mock_data_loader.load_data.return_value = self.mock_dataset
+
+        mock_factory = MagicMock()
+        mock_factory.get_loader.return_value = mock_data_loader
+
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.apply_chat_template.return_value = "<user>Q</user>"
+        mock_tokenizer.chat_template = "mock_template"
+
+        mock_tokenizer_loader = MagicMock()
+        mock_tokenizer_loader.get_tokenizer.return_value = mock_tokenizer
+
+        mock_llm_loader = MagicMock()
+        mock_llm_loader.load_base_model.return_value = MagicMock()
+        mock_llm_loader.apply_peft.return_value = MagicMock()
+
+        mock_train_usecase = MagicMock()
+        mock_train_usecase.execute.return_value = MagicMock(training_loss=0.25)
+
+        mock_register_usecase = MagicMock()
+        mock_register_usecase.execute.return_value = "https://huggingface.co/org/model"
+
+        pipeline = TrainPipelineUsecase(
+            config_loader=mock_config_loader,
+            dataset_loader_factory=mock_factory,
+            tokenizer_loader=mock_tokenizer_loader,
+            llm_model_loader=mock_llm_loader,
+            train_model_usecase=mock_train_usecase,
+            register_model_usecase=mock_register_usecase,
+        )
+
+        result = pipeline.run()
+        self.assertEqual(
+            result.registered_model_uri, "https://huggingface.co/org/model"
+        )
+        mock_register_usecase.execute.assert_called_once()
 
 
 if __name__ == "__main__":

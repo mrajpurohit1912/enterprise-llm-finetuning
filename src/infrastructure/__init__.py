@@ -13,7 +13,13 @@ from src.infrastructure.factories import (
     ComputeProviderFactory,
     DatasetLoaderFactory,
     EvaluatorFactory,
+    ModelRegistryFactory,
     TrainerFactory,
+)
+from src.infrastructure.registry import (
+    HuggingFaceHubRegistry,
+    LocalModelRegistry,
+    ModelCardGenerator,
 )
 from src.infrastructure.huggingface import (
     ChatTemplateFormatter,
@@ -33,10 +39,14 @@ __all__ = [
     "DatasetLoaderFactory",
     "EvaluatorFactory",
     "HuggingFaceDatasetLoader",
+    "HuggingFaceHubRegistry",
     "HuggingFaceTokenizer",
     "KaggleApiClient",
     "KaggleComputeProvider",
     "KaggleKernelBuilder",
+    "LocalModelRegistry",
+    "ModelCardGenerator",
+    "ModelRegistryFactory",
     "TrainerFactory",
     "YamlConfigLoader",
     "setup_logging",

@@ -194,7 +194,7 @@ class TestPresentationLayer(unittest.TestCase):
 
         code = handle_merge_action(self.sample_config)
         self.assertEqual(code, 0)
-        mock_uc.merge_and_unload_model.assert_called_once()
+        mock_uc.execute.assert_called_once()
 
     @patch("src.presentation.handlers.build_train_pipeline")
     def test_handle_pipeline_action(self, mock_build: MagicMock) -> None:

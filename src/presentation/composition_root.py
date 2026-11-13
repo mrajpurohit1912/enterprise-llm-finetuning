@@ -6,6 +6,7 @@ Wires domain factories, infrastructure adapters, and application use cases.
 
 from src.application.usecases.evaluate_model_usecase import EvaluateModelUseCase
 from src.application.usecases.merge_model_usecase import MergeModelUseCase
+from src.application.usecases.register_model_usecase import RegisterModelUseCase
 from src.application.usecases.submit_remote_job_usecase import SubmitRemoteJobUseCase
 from src.application.usecases.sync_remote_job_usecase import SyncRemoteJobUseCase
 from src.application.usecases.train_model_usecase import TrainModelUseCase
@@ -16,6 +17,7 @@ from src.domain.schemas.config_schema import ExperimentConfig
 from src.infrastructure.factories.compute_factory import ComputeProviderFactory
 from src.infrastructure.factories.dataset_factory import DatasetLoaderFactory
 from src.infrastructure.factories.evaluator_factory import EvaluatorFactory
+from src.infrastructure.factories.registry_factory import ModelRegistryFactory
 from src.infrastructure.factories.trainer_factory import TrainerFactory
 from src.infrastructure.huggingface.huggingface_tokenizer import HuggingFaceTokenizer
 from src.infrastructure.llm_model_loader.transformers_llm_model_loader import (
@@ -65,6 +67,11 @@ def build_train_pipeline(
 
     merge_model_usecase = build_merge_usecase(config=config)
 
+    register_model_usecase = None
+    if config.registry and config.registry.auto_register:
+        registry = ModelRegistryFactory.get_registry(config.registry.registry_type)
+        register_model_usecase = RegisterModelUseCase(registry=registry)
+
     return TrainPipelineUsecase(
         config_loader=config_loader,
         dataset_loader_factory=dataset_factory,
@@ -72,6 +79,7 @@ def build_train_pipeline(
         train_model_usecase=train_model_usecase,
         evaluate_model_usecase=evaluate_model_usecase,
         merging_model_usecase=merge_model_usecase,
+        register_model_usecase=register_model_usecase,
         callbacks=callbacks,
     )
 

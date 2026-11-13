@@ -6,12 +6,14 @@ Infrastructure factories export.
 from src.infrastructure.factories.compute_factory import ComputeProviderFactory
 from src.infrastructure.factories.dataset_factory import DatasetLoaderFactory
 from src.infrastructure.factories.evaluator_factory import EvaluatorFactory
+from src.infrastructure.factories.registry_factory import ModelRegistryFactory
 from src.infrastructure.factories.trainer_factory import TrainerFactory
 
 __all__ = [
     "ComputeProviderFactory",
     "DatasetLoaderFactory",
     "EvaluatorFactory",
+    "ModelRegistryFactory",
     "TrainerFactory",
 ]
 
