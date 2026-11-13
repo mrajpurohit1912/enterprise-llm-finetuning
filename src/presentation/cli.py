@@ -229,12 +229,22 @@ def main() -> None:
             )
             evaluate_model_usecase = EvaluateModelUseCase(evaluator=evaluator)
 
+
+        llm_model_loader = TransformerLlmModelLoader()
+        tokenizer_loader = HuggingFaceTokenizer()
+        merge_model_usecase = MergeModelUseCase(
+                config=config,
+                model_loader=llm_model_loader,
+                tokenizer_loader=tokenizer_loader,
+            )
+
         pipeline = TrainPipelineUsecase(
             config_loader=config_loader,
             dataset_loader_factory=dataset_factory,
             tokenizer_loader=tokenizer_loader,
             train_model_usecase=train_model_usecase,
             evaluate_model_usecase=evaluate_model_usecase,
+            merging_model_usecase=merge_model_usecase,
             callbacks=callbacks,
         )
 

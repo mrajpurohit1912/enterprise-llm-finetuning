@@ -13,6 +13,7 @@ from src.application.usecases.evaluate_model_usecase import EvaluateModelUseCase
 from src.application.usecases.load_dataset_usecase import LoadDatasetUseCase
 from src.application.usecases.preprocess_dataset_usecase import PreprocessDatasetUseCase
 from src.application.usecases.train_model_usecase import TrainModelUseCase
+from src.application.usecases.merge_model_usecase import MergeModelUseCase
 from src.domain.exceptions import DomainError, ModelLoadError, PipelineExecutionError
 from src.domain.interfaces.config_loader import ConfigLoaderBase
 from src.domain.interfaces.model_loader import ModelLoaderBase
@@ -44,6 +45,7 @@ class TrainPipelineUsecase:
         llm_model_loader: Optional[ModelLoaderBase] = None,
         train_model_usecase: Optional[TrainModelUseCase] = None,
         evaluate_model_usecase: Optional[EvaluateModelUseCase] = None,
+        merging_model_usecase: Optional[MergeModelUseCase] = None,
         callbacks: Optional[list] = None,
     ) -> None:
         self.config_loader = config_loader
@@ -52,6 +54,7 @@ class TrainPipelineUsecase:
         self.llm_model_loader = llm_model_loader or TransformerLlmModelLoader()
         self.train_model_usecase = train_model_usecase
         self.evaluate_model_usecase = evaluate_model_usecase
+        self.merging_model_usecase = merging_model_usecase
         self.callbacks = callbacks or []
         self.config: Optional[ExperimentConfig] = None
         self.llm_base_model: Any = None
@@ -151,6 +154,11 @@ class TrainPipelineUsecase:
                 if isinstance(train_output, dict):
                     train_loss = train_output.get("training_loss", train_output.get("train_loss"))
                     metrics = train_output
+
+
+            if self.config.artifact.save_merged_model and self.merging_model_usecase is not None:
+                self.merging_model_usecase.merge_and_unload_model()
+
 
             return TrainPipelineResult(
                 experiment_name=self.config.experiment.name,
