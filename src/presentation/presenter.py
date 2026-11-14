@@ -132,6 +132,17 @@ class ConsolePresenter:
             print(f"Quality Gate      : {gate}")
         print("=======================================================\n")
 
+    @staticmethod 
+    def render_registry_summary(model_name: str, published_uri: str, provider_name: str) -> None:
+        """Render model registry publication confirmation."""
+        print("\n=======================================================")
+        print("          MODEL REGISTRY PUBLICATION SUMMARY           ")
+        print("=======================================================") 
+        print(f"Model Identifier  : {model_name}") 
+        print(f"Registry Backend  : {provider_name}")
+        print(f"Published URI     : {published_uri}")
+        print("=======================================================\n")
+
     @staticmethod
     def render_error(title: str, message: str) -> None:
         """Render domain or fatal error message to stderr."""

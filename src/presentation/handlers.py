@@ -11,11 +11,13 @@ from pathlib import Path
 
 from src.domain.schemas.compute_schema import RemoteJobStatus
 from src.domain.schemas.config_schema import ExperimentConfig
+from src.domain.schemas.evaluation_schema import EvaluationResult 
 from src.infrastructure.config.yaml_loader import YamlConfigLoader
 from src.presentation.composition_root import (
     build_merge_usecase,
     build_remote_usecases,
     build_train_pipeline,
+    build_register_usecase,
 )
 from src.presentation.presenter import ConsolePresenter
 
@@ -99,6 +101,33 @@ def handle_merge_action(
     merge_usecase.execute()
     return 0
 
+def handle_model_registry_action(
+    config: ExperimentConfig,
+    presenter: ConsolePresenter | None = None,
+) -> int:
+    """Handle standalone model registration and publishing to model registry."""
+
+    presenter = presenter or ConsolePresenter()
+    registry_usecase = build_register_usecase(config=config)
+
+    eval_result = None
+    eval_file = Path(config.artifact.output_dir) / "evaluation_report.json"
+    if eval_file.exists():
+        eval_result = EvaluationResult.model_validate_json(eval_file.read_text(encoding="utf-8"))
+
+    published_uri = registry_usecase.execute(
+        artifact_path=Path(config.artifact.output_dir),
+        config=config,
+        evaluation_result=eval_result,
+    )
+
+    presenter.render_registry_summary(
+        model_name=config.registry.model_name,
+        published_uri=published_uri,
+        provider_name=config.registry.registry_type,
+    )
+
+    return 0
 
 def handle_pipeline_action(
     config: ExperimentConfig,

@@ -35,7 +35,10 @@ def build_merge_usecase(config: ExperimentConfig) -> MergeModelUseCase:
         model_loader=llm_model_loader,
         tokenizer_loader=tokenizer_loader,
     )
-
+def build_register_usecase(config: ExperimentConfig) -> RegisterModelUseCase:
+    """Centralized assembly of RegisterModelUseCase with registry backend."""
+    registry = ModelRegistryFactory.get_registry(config.registry.registry_type)
+    return RegisterModelUseCase(registry=registry)
 
 def build_train_pipeline(
     config: ExperimentConfig,

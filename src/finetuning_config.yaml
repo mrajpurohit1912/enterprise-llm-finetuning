@@ -100,7 +100,7 @@ evaluation:
 
 registry:
   registry_type: "hf_hub" # Options: hf_hub | s3 | local | mlflow
-  model_name: "meta-llama/Llama-3.2-3B-Instruct-finqa-LoRA"
+  model_name: "mrajpurohit1912/Llama-3.2-3B-Instruct-finqa-LoRA"
   auto_register: true
 
 artifact:

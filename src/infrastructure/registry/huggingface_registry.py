@@ -9,7 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from huggingface_hub import HfApi
+import huggingface_hub.constants as hf_constants
 from huggingface_hub.utils import HfHubHTTPError
+
+# Force standard Git-LFS upload protocol to avoid experimental XetHub CAS failures
+hf_constants.HF_HUB_DISABLE_XET = True
 
 from src.domain.exceptions import ModelRegistryError
 from src.domain.interfaces.model_registry import IModelRegistry

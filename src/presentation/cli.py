@@ -17,6 +17,7 @@ from src.infrastructure.config.yaml_loader import YamlConfigLoader
 from src.infrastructure.logging import setup_logging
 from src.presentation.handlers import (
     handle_merge_action,
+    handle_model_registry_action,
     handle_pipeline_action,
     handle_remote_action,
     is_remote_action,
@@ -60,6 +61,11 @@ def parse_args(args: Sequence[str] | None = None) -> argparse.Namespace:
         "--merging-only",
         action="store_true",
         help="only for merging and saving the model",
+    )
+    parser.add_argument(
+        "--register-only",
+        action="store_true",
+        help="Publish existing model artifacts to the model registry without training",
     )
 
     # Remote Cloud Compute Arguments
@@ -121,6 +127,9 @@ def run_cli(
 
         if args.merging_only:
             return handle_merge_action(config, presenter=presenter)
+
+        if args.register_only: 
+            return handle_model_registry_action(config, presenter=presenter)
 
         return handle_pipeline_action(
             config=config,
