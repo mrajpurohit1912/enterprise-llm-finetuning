@@ -18,10 +18,10 @@ from src.domain.schemas.config_schema import (
     LLMModelConfig,
     MonitoringConfig,
     PEFTConfig,
-    TrainingArgs,
     QuantizationConfig,
     RegistryConfig,
     TelemetryConfig,
+    TrainingArgs,
 )
 from src.domain.schemas.evaluation_schema import (
     EvaluationConfig,
@@ -30,10 +30,27 @@ from src.domain.schemas.evaluation_schema import (
     MetricScores,
     TaskType,
 )
+from src.domain.schemas.inference_schema import (
+    ChatCompletionChunk,
+    ChatCompletionChunkChoice,
+    ChatCompletionChunkDelta,
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    ChatCompletionResponseChoice,
+    ChatMessage,
+    UsageInfo,
+)
 from src.domain.schemas.pipeline_schema import TrainPipelineResult
 
 __all__ = [
     "ArtifactConfig",
+    "ChatCompletionChunk",
+    "ChatCompletionChunkChoice",
+    "ChatCompletionChunkDelta",
+    "ChatCompletionRequest",
+    "ChatCompletionResponse",
+    "ChatCompletionResponseChoice",
+    "ChatMessage",
     "DatasetConfig",
     "DatasetSourceType",
     "EvaluationConfig",
@@ -53,6 +70,7 @@ __all__ = [
     "RemoteJobStatus",
     "TaskType",
     "TelemetryConfig",
-    "TrainingArgs",
     "TrainPipelineResult",
+    "TrainingArgs",
+    "UsageInfo",
 ]

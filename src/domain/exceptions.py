@@ -47,8 +47,7 @@ class ModelMergeError(DomainError):
 class ModelRegistryError(DomainError):
     """Raised when model registration, metadata generation, or artifact upload fails."""
 
-class ModelRegistryError(DomainError):
-    """Raised when model registration, metadata generation, or artifact upload fails."""
-    pass
 
+class ModelInferenceError(DomainError):
+    """Raised when model serving, prompt formatting, or token generation fails."""
 
